@@ -74,6 +74,12 @@ rtabmap_parameters:
   Grid/RangeMax: "8"
   Grid/CellSize: "0.05"
   Grid/MaxObstacleHeight: "1.0"            # relative to robot_center (~1.7 m above the floor)
+  # Normals-only ground segmentation classifies ANY horizontal surface as ground, so tables came
+  # out as free space. Horizontal points above this height (relative to robot_center, which is
+  # ~0.72 m above the floor) are obstacles: tabletops 318 occupied / 18 free cells instead of
+  # 69 / 357 on full_survey_take_01. Too tight a margin turns far, slightly tilted floor into
+  # obstacles; re-check on an indoor bag with /tf from the URDF.
+  Grid/MaxGroundHeight: "-0.55"
   Mem/NotLinkedNodesKept: "false"
   Mem/STMSize: "10"                        # lidar3d uses 30; see ProximityPathMaxNeighbors
   Reg/Strategy: "1"

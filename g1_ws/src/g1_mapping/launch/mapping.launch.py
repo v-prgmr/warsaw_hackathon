@@ -151,6 +151,9 @@ def _launch_setup(context):
     slam_args = ["-d"] if (not localization and _bool(context, "delete_db")) else []
     slam_remaps = [("scan_cloud", scan_topic), ("odom", topics["odom"]),
                    ("rgbd_image", topics["rgbd_image"])]
+    if use_imu:
+        # IMU gravity constrains the pose graph (keeps the map level), as in lidar3d.launch.py
+        slam_remaps.append(("imu", topics["imu"]))
     nodes.append(Node(
         package="rtabmap_slam", executable="rtabmap", output="screen",
         parameters=[common, icp_params, slam_params], remappings=slam_remaps,
