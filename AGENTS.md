@@ -291,7 +291,7 @@ Useful:
 
 ## What the robot publishes vs what we run
 
-The robot/Orin publishes only raw streams. Observed so far: RealSense topics, `/utlidar/cloud_livox_mid360`, `/dog_odom`, `/dog_imu_raw`, `/tf_static` (RealSense-internal frames). `/utlidar/imu_livox_mid360`, `/lowstate`, `/secondary_imu`, and `/lf/bmsstate` were seen in DDS discovery but have **not** yet been recorded with data.
+The robot/Orin publishes only raw streams, all from Unitree's bare-DDS services (no ROS nodes). Verified live on 2026-09-25 (listen-only, robot standing): `/utlidar/cloud_livox_mid360` 10 Hz, `/utlidar/imu_livox_mid360` 200 Hz, `/dog_odom` / `/dog_imu_raw` / `/lowstate` / `/secondary_imu` ~1 kHz, `/lf/lowstate` / `/lf/bmsstate` 20 Hz (the `/lf/*` topics are 20 Hz copies). `/tf_static` appears only while the RealSense driver runs; no camera driver was running during the check. The robot is the **29-DoF** model (confirmed by the team; `/lowstate` shows 29 active joints, `mode_machine` 5). Unitree's own SLAM topics (`/unitree/slam_*`, `/global_map`) exist but are idle; do not use them as a second map owner.
 
 **The robot does not publish `/tf`.** Nothing needs "enabling" on the robot: `/tf`, `/joint_states`, `/odom`, `/map`, `/scan`, and POIs only exist while our host nodes run (§6 ownership table, §10.1). A bag contains `/tf` only if those nodes ran during the capture.
 
@@ -328,7 +328,7 @@ zeros       ~38 % of points are (0,0,0) → filter before use
 
 RTAB-Map (`rtabmap_conversions`) reads a float32 `time` field as **seconds**, so the cloud must be converted before deskewing. `g1_mapping` does this.
 
-IMU sources: `/dog_imu_raw` (~1 kHz, frame `dog_imu_link`, orientation populated) and `/utlidar/imu_livox_mid360` (the MID-360's internal IMU, rigidly attached to the LiDAR; record it whenever it is published).
+IMU sources: `/dog_imu_raw` (~1 kHz, frame `dog_imu_link`, orientation populated) and `/utlidar/imu_livox_mid360` (the MID-360's internal IMU, 200 Hz, rigidly attached to the LiDAR). The LiDAR IMU reports acceleration in **g** and **no orientation**; Its raw gyro has ~0.6–0.9 °/s bias (all G1 gyros do; Unitree compensates it onboard in `/dog_imu_raw`'s orientation). `g1_mapping imu_source:=livox` converts it and runs `imu_complementary_filter` with gyro-bias estimation (standing: yaw drift 0.005 °/s, vs 0.94 °/s without bias estimation). `/dog_imu_raw` stays the default until a walking bag compares both.
 
 LiDAR also feeds obstacle perception / `/scan` for Nav2.
 
@@ -344,15 +344,15 @@ The entire mapping pipeline must support replay with the G1 powered off.
 /utlidar/cloud_livox_mid360
 /dog_imu_raw
 /dog_odom
-/lowstate        # joint states: /tf can be regenerated offline from it
+/lf/lowstate     # 20 Hz copy of /lowstate (joint states): /tf can be regenerated offline from it
 /tf_static
 ```
 
-`/tf` is recorded only if our TF nodes (`/lowstate` bridge + `robot_state_publisher` + static glue, §10.1) run during the capture. Run them during capture when possible; `/lowstate` is the fallback for regenerating `/tf` at replay.
+`/tf` is recorded only if our TF nodes (`/lowstate` bridge + `robot_state_publisher` + static glue, §10.1) run during the capture. Run them during capture when possible; `/lf/lowstate` is the fallback for regenerating `/tf` at replay. The full-rate `/lowstate` (~2.4 MB/s) is only needed in `live_run` bags.
 
 Semantic streams: OAK-D RGB + aligned depth + CameraInfo (names to be verified, see above). The RealSense streams are optional.
 
-Also record when available: `/utlidar/imu_livox_mid360`, `/secondary_imu`, `/lf/bmsstate`. Check every bag's message counts: a topic in the profile that nobody published is silently missing from the bag.
+Also record: `/utlidar/imu_livox_mid360`, `/secondary_imu`, `/lf/bmsstate`. Check every bag's message counts: a topic in the profile that nobody published is silently missing from the bag.
 
 For every canonical capture, also write down 2–3 tape-measured dimensions next to the bag name (M2).
 
@@ -496,7 +496,7 @@ pelvis → waist joints → torso_link
 **The robot does not publish `/tf`.** We produce it on the host:
 
 1. `/lowstate` → `/joint_states` bridge (the isolated-DDS `unitree_bridge` / `lowstate_to_jointstate` pattern, §5)
-2. `robot_state_publisher` with the URDF that matches the robot variant (23-DoF vs 29-DoF; verify from `/lowstate`) from `third_party/unitree_ros/robots/g1_description`
+2. `robot_state_publisher` with the URDF that matches the robot variant (29-DoF, confirmed; which `g1_29dof*` file, e.g. with or without hands, still needs verifying) from `third_party/unitree_ros/robots/g1_description`
 3. one static-TF launch for the glue frames below
 4. `odom -> robot_center` from `g1_mapping` (§6 ownership table)
 
@@ -1322,10 +1322,10 @@ Consequences:
 Cross-cutting (assign to lead): freeze the **sensor/topic/frame contract** + **canonical scene/POI output contract** before coding; own the **canonical shared rosbag**; own the **safety checklist**. The keyframe struct remains frozen for semantic/offline work.
 
 ### Recording conventions (`g1_recorder`)
-- **Mandatory:** `/utlidar/cloud_livox_mid360`, `/dog_imu_raw`, `/dog_odom`, `/lowstate`, `/tf_static`,
+- **Mandatory:** `/utlidar/cloud_livox_mid360`, `/dog_imu_raw`, `/dog_odom`, `/lf/lowstate`, `/tf_static`,
   plus `/tf` whenever our TF nodes run during capture (the robot does not publish it). Semantic: OAK-D
   RGB + aligned depth + CameraInfo (**same resolution**; names to be verified). RealSense streams optional.
-  When available: `/utlidar/imu_livox_mid360`, `/secondary_imu`, `/lf/bmsstate`.
+  Also: `/utlidar/imu_livox_mid360`, `/secondary_imu`, `/lf/bmsstate`.
   Profiles: `g1_recorder/config/survey.yaml` (default), `live_run.yaml`. Check message counts per bag.
 - Existing bags `full_survey_take_01`, `rtab_take_*`, `rosbag2_2026_09_25-15_05_44` have **no `/tf`**; the
   `rtab_take_*` ones have no LiDAR/IMU either. Only `full_survey_take_01` works with `g1_mapping` (using its
