@@ -29,7 +29,18 @@ Use the bandwidth-safe settings validated for RTAB-Map recording:
 
 ```bash
 source /opt/ros/foxy/setup.bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export ROS_DOMAIN_ID=0
+export CYCLONEDDS_URI='<CycloneDDS>
+  <Domain Id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface name="eth0" priority="default" multicast="default"/>
+      </Interfaces>
+      <AllowMulticast>spdp</AllowMulticast>
+    </General>
+  </Domain>
+</CycloneDDS>'
 
 ros2 launch realsense2_camera rs_launch.py \
   rgb_camera.profile:=640x480x15 \
@@ -38,6 +49,15 @@ ros2 launch realsense2_camera rs_launch.py \
   enable_sync:=true \
   pointcloud.enable:=false \
   publish_tf:=true
+```
+
+This exact DDS configuration is required on the Orin. A stale URI referencing `wlan0` causes
+`rmw_create_node: failed to create domain`. Confirm the active values before launching:
+
+```bash
+printf 'RMW=%s\nDOMAIN=%s\nCYCLONEDDS_URI=%s\n' \
+  "$RMW_IMPLEMENTATION" "$ROS_DOMAIN_ID" "$CYCLONEDDS_URI"
+ip -brief address show eth0
 ```
 
 Keep this terminal open while recording. Stop the RealSense node cleanly with `Ctrl-C` after the
