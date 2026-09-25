@@ -887,6 +887,8 @@ Acceptance criteria:
 
 Do not start this milestone before M0–M3 are independently working.
 
+**Event-rule constraint (see Section 25):** `rl_hnav` drives the legs via `LowCmd` = custom low-level control. It must first run on the harness/stand with a working safety supervisor, and only then free-standing, on mats, with two people present. If that path is not cleared, fall back to the built-in locomotion via high-level SDK (Loco/Sport client) as the `/cmd_vel` executor.
+
 ## M6 — Shared Frame + Leo Handoff
 
 Goal:
@@ -992,6 +994,8 @@ When interacting with the physical G1:
 - maintain a `/cmd_vel` freshness timeout
 - do not bypass existing G1 safety / motion-switcher logic
 - do not assume a simulator-tested command is safe on hardware
+
+The organizer's (x-kom) rules for using the G1 are binding and take precedence over everything in this file. See **Section 25**.
 
 Autonomous motion should only be enabled after:
 
@@ -1237,3 +1241,69 @@ frame names before coding; own the **canonical shared rosbag**; own the **safety
   are often `best_effort` → replay subscribers/RViz must match QoS.
 - Produce **one canonical rosbag** as the shared fixture so B/C/D/E develop offline in parallel;
   the whole pipeline must re-run **robot-off** from it (demo insurance).
+
+# 25. Organizer (x-kom) Rules for the G1 — Binding
+
+Source: the hackathon's G1 usage regulations from x-kom (paraphrased from the Polish original). These override any conflicting statement above. If a task would violate them, stop and surface it.
+
+## 25.1 Control tiers
+
+| Tier | What | Conditions |
+|---|---|---|
+| Built-in | Remote, vendor app, built-in locomotion and motions | No restrictions on the ground floor |
+| High-level SDK | Loco/Sport client, Arm SDK, hand control, sensors; own software onboard or offboard. Vendor controller keeps balance | Free-standing on the ground floor OK; demos of finished behaviors outside mats OK, with an operator next to the robot |
+| Low-level (`lowcmd`) | Own policies on any joints, incl. legs / dynamic behaviors | Robot on harness or stand, **and** a working own safety supervisor (25.3) |
+| Free-standing whole-body / dynamic | Own whole-body control, dynamic behaviors | Only if it already passed on the harness with no supervisor trips, supervisor is running, on mats, two people present. Damage from trials outside these conditions is the team's liability |
+
+Implications for this project:
+- Perception work (M0–M4) needs only sensors + built-in/high-level modes. No `lowcmd` is needed. Keep it that way.
+- `rl_hnav` publishes `LowCmd` -> it is the **low-level tier**. See M5.
+- Preferred `/cmd_vel` executor for a fast, low-risk path: high-level SDK Loco/Sport client `Move(vx, vy, wz)`; `rl_hnav` only if the low-level requirements are met.
+- Default for any agent-written code: no actuation. Opt-in only (consistent with Section 19).
+
+## 25.2 Prohibitions relevant to code and setup
+
+- No stairs, ramps, platforms, balconies, or going outside. Flat indoor ground floor only.
+- No driving the robot through crowds; on mats only operators in the zone, spectators behind a clear line.
+- No enabling actuators with fewer than two team members present, or if nobody holds the remote with the e-stop.
+- No free-standing custom leg control without a prior harness trial and a running supervisor.
+- Nothing carried in hands during low-level trials. During built-in locomotion only closed, unbreakable objects within the hand payload limit. No open liquids, glass, hot or sharp items.
+- No hard power cut. Shutdown = OS shutdown, then the switch (exception: danger to people).
+- Do not walk the robot below **20 %** battery; do not run actuators below **10 %**. Original charger only, supervised. Code should read battery state and refuse/abort motion under those thresholds.
+- Do **not** change firmware, OS, system account passwords, or network configuration (adding the event network is the only exception). Do not remove x-kom SSH keys. Our own SSH keys/accounts may be added onboard and must be listed at return.
+  - Consequence for agents: do not `apt upgrade`, change kernel/OS settings, netplan/NetworkManager config, DDS/network interface config on the robot, etc. Keep installs (e.g. `realsense-ros`) scoped, minimal, documented, and reversible; prefer running heavy stacks on the dev machine / Docker. Existing `unitree_bridge` / DDS setup must be used as-is.
+- No disassembly (except hands), drilling, gluing. Never cover cameras, LiDAR, vents or indicators. Do not attach devices to robot connectors that could damage it.
+- Extra hardware (cameras, mics, 3D-printed mounts) <= **1 kg** total, on torso or head, hands via velcro/zip ties or manufacturer mounting holes, no traces on removal.
+- Do not leave the robot standing unattended; in breaks: stand, harness, or rest pose.
+- Hands: Revo 2 <-> dummy hands swap only with the robot fully off. Use dummy hands for collision/impact/fast-contact tests.
+
+## 25.3 Required safety supervisor (for any low-level control)
+
+Before the first run of own low-level control, run a separate process/thread that:
+
+- logs full robot state at loop rate, **>= 50 Hz**: joint pos/vel, torque, temperature, per-actuator error flags, IMU, battery, and the commands sent to actuators. Keep logs until the end of the hackathon; hand to x-kom on request.
+- automatically switches the robot to **damping/limp mode** when: no new state frame or loop stall > **100 ms**; an actuator reports an error; temperature or torque exceed team thresholds (with margin vs. manufacturer limits); commanded vs. measured position deviates above a per-behavior threshold; body tilt exceeds a per-behavior threshold.
+- after a loop stall does **not** catch up on missed ticks; resumes from the current state with rate limiting.
+- does no disk writes, network communication or heavy inference in the command-generating thread (log via a queue/other thread; keep VGGT/GroundingDINO etc. off the control path).
+- never disables, takes over or delays the remote's emergency stop.
+- Thresholds are chosen per behavior and documented by the team (store next to the code, e.g. `docs/safety_thresholds.md`). Each new code version must pass **>= 3 minutes of dry-run** (no actuation) without a supervisor trip before it drives actuators.
+- On an incident, thresholds doc, logs, and the code version at that moment go to x-kom. Tag/commit the exact version that runs on actuators.
+
+## 25.4 Incident procedure
+
+An incident = fall, collision, unnatural sound, overheating, error message in the vendor app, spontaneous motion, or a supervisor trip.
+
+1. Emergency stop from the remote.
+2. Leave the robot as found.
+3. Photos from several sides + a note with the time.
+4. Preserve logs and the code version at the time of the incident.
+5. Phone x-kom immediately. Delay in reporting counts as concealment.
+
+Agents must never "fix and retry" after an incident, and must not delete or rotate logs.
+
+## 25.5 Effect on the plan
+
+- M0–M4 (sensing, reconstruction, POI): unaffected; built-in mode + sensors + manual/remote survey. Read-only sensor discovery stays the default.
+- M5 (autonomous survey): gated by 25.1 / 25.3. Decide early whether to use high-level Loco client (fewer requirements) or `rl_hnav` (harness trial + supervisor first). Budget time for the harness trial and supervisor dry-run.
+- Mounting extra sensors: <= 1 kg, non-destructive, no occluding of existing sensors.
+- Recording (M0): `rosbag2` and supervisor logs run on the dev machine or a non-critical thread; do not add load to the command path.
