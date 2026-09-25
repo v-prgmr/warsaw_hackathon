@@ -12,7 +12,7 @@ It captures the architecture, decisions, constraints, module boundaries, milesto
 
 Agents should treat the decisions in this file as authoritative unless a human explicitly changes them.
 
-**Current architecture update (2026-09-25, evening): RTAB-Map is the mapping backbone and the only `map -> odom` owner. LiDAR (MID-360) + IMU provide geometry and odometry; the RealSense RGB-D camera provides color, semantics, and POIs only. VGGT is optional / stretch only. Where older notes mention RGB-D (or VGGT) as the geometry source, this architecture wins.**
+**Current architecture update (2026-09-25, evening): RTAB-Map is the mapping backbone and the only `map -> odom` owner. LiDAR (MID-360) + IMU provide geometry and odometry; the RealSense RGB-D camera provides color, semantics, and POIs only. Where older notes mention RGB-D as the geometry source, this architecture wins.**
 
 ---
 
@@ -49,20 +49,6 @@ natural-language query on RGB keyframes
 handoff to Leo Rover
 ```
 
-**VGGT is now an optional parallel / research branch, not the primary mapper and not a dependency for the core demo.**
-
-Optional branch:
-
-```text
-RGB keyframes
-    ↓
-VGGT
-    ↓
-learned dense reconstruction
-    ↓
-compare / align against RTAB-Map metric world
-```
-
 The G1 is the **survey + spatial understanding embodiment**.
 
 ---
@@ -94,8 +80,6 @@ Leo handoff
 For the early milestones, moving the G1 manually or via teleoperation is acceptable.
 
 **Autonomous locomotion must not block mapping / POI development.**
-
-**VGGT must not block the core path.** If pursued, it should run in parallel after the RTAB-Map baseline is working.
 
 ---
 
@@ -204,14 +188,11 @@ The G1 side is divided into six gross modules.
 └────────────────────────────┘
 ```
 
-Two cross-cutting / later modules sit beside this core path:
+One cross-cutting / later module sits beside this core path:
 
 ```text
 A. Nav2 + m-explore (explore_lite) + G1 locomotion executor
    → autonomous exploration (predefined viewpoints as fallback)
-
-B. Optional VGGT branch
-   → learned RGB-only reconstruction for comparison / enrichment
 ```
 
 ## Primary mapping decision
@@ -230,7 +211,7 @@ Why (observed on the robot and in bags, 2026-09-25):
 - frames blur while the G1 walks, and the latest captures were in low light. RGB-D visual odometry lost tracking on every survey bag tried (`full_survey_take_01`: 71 % of frames lost, 113 map fragments).
 - the MID-360 covers 360°, is independent of lighting, and ICP odometry on the same bag tracked 1528/1529 scans and closed the loop (13 LiDAR loop closures with `g1_mapping` defaults, one map).
 - RTAB-Map consumes LiDAR clouds directly, still produces the 2D occupancy grid, pose graph, and TF that Nav2 needs, and can attach RGB-D to map nodes for color.
-- metric scale comes from LiDAR ranges; VGGT scale recovery stays off the critical path.
+- metric scale comes from LiDAR ranges.
 
 ## Nav stack ownership rule
 
@@ -265,7 +246,7 @@ but that should be a deliberate fallback, not the default architecture.
 
 ## Goal
 
-Provide synchronized scene observations from the G1 for RTAB-Map LiDAR-inertial mapping, semantic perception, offline replay, and optional VGGT experiments.
+Provide synchronized scene observations from the G1 for RTAB-Map LiDAR-inertial mapping, semantic perception, and offline replay.
 
 ## Sensors
 
@@ -356,7 +337,7 @@ Also record when available: `/utlidar/imu_livox_mid360`, `/joint_states` or `/lo
 
 For every canonical capture, also write down 2–3 tape-measured dimensions next to the bag name (M2).
 
-The canonical rosbag is the shared development fixture for mapping, semantic perception, and optional VGGT work.
+The canonical rosbag is the shared development fixture for mapping and semantic perception.
 
 ---
 
@@ -450,52 +431,9 @@ The existing `keyframe_manager` package is still useful for:
 
 - offline inspection
 - Grounding DINO + SAM2 semantic querying
-- optional VGGT reconstruction
 - creating reproducible image/depth fixtures
 
 It is **not a dependency for primary mapping**.
-
----
-
-# 9. Optional Module — VGGT Learned Reconstruction
-
-VGGT is no longer on the critical path.
-
-Use it only if the RTAB-Map metric baseline is already working or if a parallel team member can pursue it independently.
-
-## Purpose
-
-VGGT can provide:
-
-- learned RGB-only camera poses
-- dense predicted geometry / point maps
-- confidence
-- a visually rich feed-forward reconstruction
-
-This can be useful for:
-
-- comparing learned reconstruction vs classical RGB-D SLAM
-- producing an additional visual scene representation
-- research/demo value
-- testing whether learned geometry adds useful structure
-
-Conceptually:
-
-```text
-selected RGB keyframes
-        ↓
-       VGGT
-        ↓
-camera poses + dense geometry + confidence
-        ↓
-optional alignment against RTAB-Map world
-```
-
-We do **not currently have access to VGGT-Ω**. If VGGT is used, use the public VGGT release.
-
-The backend must remain swappable between Orin, laptop GPU, and cloud GPU.
-
-VGGT output must not replace the metric RTAB-Map world unless it has been explicitly registered and validated.
 
 ---
 
@@ -558,22 +496,6 @@ Compare them against the RTAB-Map map. The milestone requires numerical agreemen
 
 The RealSense depth is an independent range sensor. Overlay the depth cloud on the LiDAR map and check the point-to-plane distance on the floor and walls. This validates the camera extrinsic that POI back-projection depends on.
 
-## 10.4 VGGT-only note
-
-If the optional VGGT branch is used, VGGT still needs explicit registration:
-
-```text
-p_map = s R p_vggt + t
-```
-
-For VGGT only:
-
-- RealSense depth may estimate `s`
-- RTAB-Map / TF provides the shared world reference
-- the LiDAR map can cross-check the result
-
-This is not part of the core RTAB-Map path.
-
 ---
 
 # 11. Module 4 — Scene / Map Outputs
@@ -620,8 +542,6 @@ semantic POI records
 ```
 
 The existing `scene_server` package may be adapted to expose a stable project-level scene API independent of the mapping backend.
-
-Optional VGGT outputs should use a clearly separate namespace such as `/vggt/scene_cloud` and `/vggt/camera_path`.
 
 ---
 
@@ -671,8 +591,6 @@ POI {
 ```
 
 For V1, use the RealSense depth as the geometric source for the object whenever possible.
-
-Do not make semantic localization depend on VGGT.
 
 ---
 
@@ -807,8 +725,6 @@ next frontier  (stop when no frontiers are left; optional return_to_init)
 
 `explore_lite` settings for the G1: `robot_base_frame: robot_center`, `costmap_topic: /map`. Pause and resume exploration with `explore/resume` (`std_msgs/Bool`), e.g. to capture keyframes or when the operator needs to stop.
 
-Do not run VGGT continuously while the robot walks in V1.
-
 Capture after the robot has stopped / settled.
 
 V1 environment assumption:
@@ -866,7 +782,7 @@ metric 3D map (LiDAR; colored where RGB-D is attached)
 2D occupancy grid
 ```
 
-No VGGT dependency. No RGB-D odometry dependency.
+No RGB-D odometry dependency.
 
 ## M2 — Frame / Physical-Measurement Validation
 
@@ -984,12 +900,6 @@ SceneHandoff {
 }
 ```
 
-## Stretch M7 — VGGT Comparison Branch
-
-Goal: produce an optional learned RGB-only reconstruction and compare it against the RTAB-Map metric world.
-
-This milestone must never block M0–M6.
-
 ---
 
 # 17. Software Packages / Nodes
@@ -1008,8 +918,6 @@ Existing / optional helpers:
 
 ```text
 keyframe_manager
-vggt_reconstruction        # optional branch
-metric_registration_vggt   # optional branch only
 ```
 
 External packages to reuse rather than reimplement:
@@ -1029,7 +937,7 @@ Recommended distinction:
 real-time acquisition / mapping / robot control
     -> ROS 2
 
-offline analysis / optional VGGT experiments
+offline analysis / semantic-query experiments
     -> Python first
 
 stable scene / POI interfaces
@@ -1058,12 +966,9 @@ Recommended execution sequence:
 13. Integrate Nav2 on the RTAB-Map /map
 14. Integrate safe G1 locomotion executor
 15. Add m-explore (explore_lite) frontier exploration on top of Nav2
-16. Only then pursue optional VGGT comparison if useful
 ```
 
 Do not start with autonomous locomotion.
-
-Do not start by solving VGGT scale.
 
 The first mapping milestone is now **MID-360 + IMU -> RTAB-Map (g1_mapping) -> metric map**.
 
@@ -1156,17 +1061,7 @@ Mitigations:
 - SLAM Toolbox only as deliberate fallback
 - inspect TF publishers before enabling Nav2
 
-## Risk 5 — Optional VGGT compute
-
-VGGT remains GPU-heavy.
-
-Mitigation:
-
-- keep the backend swappable
-- do not block the core demo on learned reconstruction
-- use offboard/cloud GPU if needed
-
-## Risk 6 — Autonomous G1 navigation
+## Risk 5 — Autonomous G1 navigation
 
 Mitigation:
 
@@ -1183,8 +1078,6 @@ Mitigation:
 
 Do not spend hackathon time on these unless all core milestones are already stable:
 
-- continuous VGGT reconstruction while walking
-- making VGGT the primary mapping system
 - full multi-robot SLAM
 - arbitrary terrain / stairs
 - training a new G1 locomotion policy
@@ -1289,15 +1182,6 @@ rl_hnav / rl_sar
 Unitree LowCmd
 ```
 
-## Optional VGGT side
-
-```text
-VGGT camera poses
-VGGT dense geometry
-VGGT confidence
-T_map_vggt   # only if aligned
-```
-
 ---
 
 # 23. Definition of Success for the G1 Side
@@ -1314,7 +1198,6 @@ Minimum successful G1-side demo:
 Stretch:
 
 7. G1 autonomously explores a bounded area with m-explore frontier exploration on Nav2 plus an event-compliant locomotion executor.
-8. VGGT produces a parallel learned reconstruction aligned / compared against the RTAB-Map world.
 
 ---
 
@@ -1332,7 +1215,7 @@ All agents working on this project should:
 - use standard ROS 2 message types where practical
 - reuse `rl_hnav` components rather than recreating them
 - make hardware actuation opt-in, not default
-- keep RTAB-Map as the primary mapping backend; keep the optional VGGT backend swappable
+- keep RTAB-Map as the primary mapping backend
 - make outputs inspectable in RViz / saved files
 - report assumptions explicitly
 - distinguish observed hardware facts from guesses
@@ -1350,7 +1233,7 @@ If an implementation choice conflicts with this file, stop and surface the confl
 
 ### Confirmed environment
 - **Dev machine:** Ubuntu 22.04 + ROS 2 Humble, x86_64, Intel Iris Xe (**no CUDA**) → laptop is
-  orchestration / RViz / native-camera only; **never runs VGGT**.
+  orchestration / RViz / native-camera only.
 - **DDS:** whole ROS 2 graph on **`rmw_cyclonedds_cpp`** (set `RMW_IMPLEMENTATION`), **not** Fast
   DDS; NIC `enp3s0`. Keep the two-CycloneDDS isolation: SDK's bundled **CycloneDDS 0.10.2** stays
   in a separate process from the system **CycloneDDS 11.x** graph to avoid the XTypes crash.
@@ -1361,15 +1244,10 @@ If an implementation choice conflicts with this file, stop and surface the confl
 - **RealSense placement:** run `realsense-ros` natively on the **laptop (Humble)** if the head-cam
   USB reaches it, else on the **Orin**; `align_depth:=true`, `pointcloud.enable:=true`. Verify
   actual topic names on the robot — do not hardcode.
-- **VGGT compute is swappable and NOT pinned:** candidates = G1 built-in **Jetson Orin**, a
-  separate **8 GB Jetson**, or **cloud GPU**. BF16 where supported. Get it running reliably first,
-  optimize placement later.
-- **VGGT is not vendored:** the `third_party/vggt` and `VGGT-1B` submodules were removed. If the
-  optional VGGT branch is pursued, add the model code and weights on the machine that runs it.
 
-### Mapping architecture update 2 — LiDAR-inertial (2026-09-25, evening)
+### Mapping architecture update — LiDAR-inertial (2026-09-25, evening)
 
-**Supersedes the geometry source in "Mapping architecture update" below.** RTAB-Map stays the backbone and the only `map -> odom` owner. **LiDAR (MID-360) + IMU now provide odometry, the 3D map, and the 2D map. RGB-D provides color, semantics, and POIs.**
+**Supersedes earlier notes that used RGB-D as the geometry source.** RTAB-Map stays the backbone and the only `map -> odom` owner. **LiDAR (MID-360) + IMU now provide odometry, the 3D map, and the 2D map. RGB-D provides color, semantics, and POIs.**
 
 Evidence from `bags/full_survey_take_01` (robot walked ~25 m in a loop, 153 s; see §6 and §8):
 
@@ -1388,38 +1266,6 @@ Consequences:
 - Exploration (M5) uses m-explore for ROS 2 (`explore_lite`) on top of Nav2 and the RTAB-Map `/map` (§15).
 - The recording laptop's clock was ~72 s ahead of the robot's clock (`full_survey_take_01`). Replay is unaffected (header stamps), but live Nav2 / TF timeouts need aligned clocks: fix it on the laptop side only (§25.2 forbids robot network/OS changes) or run the stack on the Orin.
 
-### Mapping architecture update (2026-09-25)
-
-This update supersedes the earlier assumption that VGGT is the primary reconstruction path. **Its geometry source (RGB-D) is itself superseded by update 2 above.**
-
-**Primary V1 map (superseded by update 2): RTAB-Map RGB-D.**
-
-```text
-RealSense RGB + aligned metric depth
-            ↓
-         RTAB-Map
-            ↓
-metric trajectory + metric 3D scene + /map + map->odom
-            ↓
-Grounding DINO + SAM2 + depth + camera pose
-            ↓
-3D POI in map frame
-```
-
-LiDAR remains an independent metric / geometry check and a navigation obstacle source. It may later contribute ICP constraints if needed.
-
-VGGT becomes a **parallel stretch branch**:
-
-```text
-keyframe_manager -> VGGT -> optional alignment / comparison to RTAB-Map
-```
-
-The previous `metric_registration` package is no longer required for the primary map. If retained, scope it to **VGGT-only registration** or general map-validation utilities.
-
-The existing `keyframe_manager` remains useful for semantic queries, offline fixtures, and VGGT experiments, but is not required by RTAB-Map.
-
-**Map ownership rule:** RTAB-Map should be the only `map -> odom` owner when it is used for navigation. Do not launch SLAM Toolbox concurrently as another map owner. SLAM Toolbox remains a deliberate fallback only.
-
 ### Day-1 task assignment (updated critical path A→B→C→D; semantic work in parallel)
 | Owner | Package(s) | Milestone | Offline-capable |
 |-------|-----------|-----------|-----------------|
@@ -1428,8 +1274,7 @@ The existing `keyframe_manager` remains useful for semantic queries, offline fix
 | C | `g1_mapping` (RTAB-Map LiDAR-inertial) bringup + tuning | M1→M3 | yes (from bag) |
 | D | URDF TF chain + physical-measurement validation + `scene_server` canonical outputs | M2→M3 | yes (from bag/map DB) |
 | E | `semantic_query` (Grounding DINO + SAM2 + RGB-D backprojection) | M4 | yes |
-| Stretch | `vggt_reconstruction` + VGGT-only registration/comparison | M7 | yes |
-Cross-cutting (assign to lead): freeze the **sensor/topic/frame contract** + **canonical scene/POI output contract** before coding; own the **canonical shared rosbag**; own the **safety checklist**. The keyframe struct remains frozen for semantic/VGGT/offline work.
+Cross-cutting (assign to lead): freeze the **sensor/topic/frame contract** + **canonical scene/POI output contract** before coding; own the **canonical shared rosbag**; own the **safety checklist**. The keyframe struct remains frozen for semantic/offline work.
 
 ### Recording conventions (`g1_recorder`)
 - **Mandatory:** `/utlidar/cloud_livox_mid360`, `/dog_imu_raw`, `/dog_odom`, `/tf` (G1 URDF via
@@ -1454,10 +1299,10 @@ Built and **offline-verified** in `g1_ws/src/` (dev distro; portable to Humble):
   Remaining: **R4** verify real topic names/QoS on robot, **R5** canonical capture + publish shared bag.
 - **Bags:** mcap, no compression. This rosbag2 build accepts topics as positional arguments
   (`--topics` is rejected). `/tf_static` transient_local override confirmed required and working.
-- **`scene_server` is a placeholder owned by D** — adapt it to expose canonical RTAB-Map-backed metric scene/map outputs. The stub publishes `/scene_cloud` in `map`; `/vggt/*` is reserved for the optional VGGT branch (§11).
+- **`scene_server` is a placeholder owned by D** — adapt it to expose canonical RTAB-Map-backed metric scene/map outputs. The stub publishes `/scene_cloud` in `map`.
 
-#### FROZEN keyframe struct — offline / semantic / optional-VGGT contract
-`keyframe_manager` writes this stable offline fixture. Semantic-query and optional VGGT code may read it; RTAB-Map primary mapping does not depend on it:
+#### FROZEN keyframe struct — offline / semantic contract
+`keyframe_manager` writes this stable offline fixture. Semantic-query code may read it; RTAB-Map primary mapping does not depend on it:
 ```
 <output_dir>/
   manifest.json            # {count, keyframes:[{id, dir, blur_var, frame_id}, ...]}
@@ -1490,8 +1335,6 @@ After R5 canonical capture, the next core test is:
 ```text
 canonical bag -> g1_mapping (RTAB-Map, LiDAR + IMU) -> metric map/trajectory -> TF sanity check + tape measurements -> RViz
 ```
-
-Do not spend critical-path time on VGGT scale recovery unless the RTAB-Map path is already working.
 
 ---
 
@@ -1537,7 +1380,7 @@ Before the first run of own low-level control, run a separate process/thread tha
 - logs full robot state at loop rate, **>= 50 Hz**: joint pos/vel, torque, temperature, per-actuator error flags, IMU, battery, and the commands sent to actuators. Keep logs until the end of the hackathon; hand to x-kom on request.
 - automatically switches the robot to **damping/limp mode** when: no new state frame or loop stall > **100 ms**; an actuator reports an error; temperature or torque exceed team thresholds (with margin vs. manufacturer limits); commanded vs. measured position deviates above a per-behavior threshold; body tilt exceeds a per-behavior threshold.
 - after a loop stall does **not** catch up on missed ticks; resumes from the current state with rate limiting.
-- does no disk writes, network communication or heavy inference in the command-generating thread (log via a queue/other thread; keep VGGT/GroundingDINO etc. off the control path).
+- does no disk writes, network communication or heavy inference in the command-generating thread (log via a queue/other thread; keep GroundingDINO / SAM2 etc. off the control path).
 - never disables, takes over or delays the remote's emergency stop.
 - Thresholds are chosen per behavior and documented by the team (store next to the code, e.g. `docs/safety_thresholds.md`). Each new code version must pass **>= 3 minutes of dry-run** (no actuation) without a supervisor trip before it drives actuators.
 - On an incident, thresholds doc, logs, and the code version at that moment go to x-kom. Tag/commit the exact version that runs on actuators.
