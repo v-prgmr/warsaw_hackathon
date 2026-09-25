@@ -6,11 +6,13 @@ This file is the shared engineering context for all coding agents working on the
 
 It captures the architecture, decisions, constraints, module boundaries, milestone order, and current implementation assumptions agreed so far.
 
-**Scope of this version:** G1 sensing, reconstruction, metric registration, ROS integration, semantic POI extraction, and later autonomous survey locomotion.
+**Scope of this version:** G1 sensing, metric RGB-D mapping, ROS integration, semantic POI extraction, autonomous survey integration, and the G1-to-Leo handoff boundary.
 
-**Out of scope for this version:** detailed Leo Rover implementation. The G1-to-Leo handoff contract is included only at the boundary. Leo-side details will be added later.
+**Out of scope for this version:** detailed Leo Rover implementation. Leo-side details will be added later.
 
 Agents should treat the decisions in this file as authoritative unless a human explicitly changes them.
+
+**Current architecture update (2026-09-25): RTAB-Map RGB-D is the primary metric mapping backbone. VGGT is optional / stretch only. Where older historical notes mention VGGT as the primary map, this newer architecture wins.**
 
 ---
 
@@ -21,31 +23,44 @@ Use a **Unitree G1 EDU** as a mobile survey / scene-understanding embodiment.
 The G1 should:
 
 1. Observe an indoor scene using its RGB-D camera and LiDAR.
-2. Reconstruct the scene using VGGT.
-3. Convert the reconstruction into a **metric 3D scene**.
-4. Allow a natural-language object query such as `"red bottle"` or `"box on the table"`.
-5. Convert the queried object into a **3D Point of Interest (POI)** with a known coordinate frame.
-6. Eventually navigate autonomously between survey viewpoints using ROS 2 Nav2 + `rl_hnav`.
-7. Hand the metric scene + POI + supporting context to the Leo Rover side.
+2. Build a **metric map directly from RGB-D** using **RTAB-Map** as the primary mapping backbone.
+3. Use LiDAR as an independent geometric validation source and, if useful, an additional registration / ICP source.
+4. Produce a robotics-ready scene representation: metric trajectory, colored 3D map, 2D occupancy map, and a defined ROS world frame.
+5. Allow a natural-language object query such as `"red bottle"` or `"box on the table"`.
+6. Convert the queried object into a **3D Point of Interest (POI)** in the shared map frame.
+7. Eventually navigate autonomously between survey viewpoints using ROS 2 Nav2 plus a G1 locomotion executor.
+8. Hand the metric scene + POI + supporting context to the Leo Rover side.
 
-Core concept:
+Primary concept:
 
 ```text
 G1 surveys
     ↓
-RGB-D + LiDAR
+RealSense RGB-D + LiDAR
     ↓
-VGGT reconstruction
+RTAB-Map metric RGB-D mapping
     ↓
-metric registration
-    ↓
-metric scene
+metric map + trajectory + occupancy grid
     ↓
 natural-language query
     ↓
-3D POI
+3D POI in map frame
     ↓
 handoff to Leo Rover
+```
+
+**VGGT is now an optional parallel / research branch, not the primary mapper and not a dependency for the core demo.**
+
+Optional branch:
+
+```text
+RGB keyframes
+    ↓
+VGGT
+    ↓
+learned dense reconstruction
+    ↓
+compare / align against RTAB-Map metric world
 ```
 
 The G1 is the **survey + spatial understanding embodiment**.
@@ -61,13 +76,13 @@ Do not make the entire demo depend on every component working simultaneously.
 Preferred development order:
 
 ```text
-sensor acquisition
+sensor acquisition + rosbag
     ↓
-offline reconstruction
+RTAB-Map RGB-D metric mapping
     ↓
-metric registration
+LiDAR / TF validation
     ↓
-RViz visualization
+RViz + Nav2-compatible map outputs
     ↓
 semantic POI
     ↓
@@ -78,7 +93,9 @@ Leo handoff
 
 For the early milestones, moving the G1 manually or via teleoperation is acceptable.
 
-**Autonomous locomotion must not block reconstruction development.**
+**Autonomous locomotion must not block mapping / POI development.**
+
+**VGGT must not block the core path.** If pursued, it should run in parallel after the RTAB-Map baseline is working.
 
 ---
 
@@ -153,6 +170,8 @@ Avoid introducing unnecessary RMW changes once a working configuration is establ
 
 ---
 
+---
+
 # 6. G1 Software Architecture
 
 The G1 side is divided into six gross modules.
@@ -163,27 +182,75 @@ The G1 side is divided into six gross modules.
 └─────────────┬──────────────┘
               ↓
 ┌────────────────────────────┐
-│ 2. Keyframe Manager        │
+│ 2. RTAB-Map RGB-D Mapping  │
 └─────────────┬──────────────┘
               ↓
 ┌────────────────────────────┐
-│ 3. VGGT Reconstruction     │
+│ 3. LiDAR / Frame Validation│
 └─────────────┬──────────────┘
               ↓
 ┌────────────────────────────┐
-│ 4. Metric Registration     │
+│ 4. Scene / Map Outputs     │
 └─────────────┬──────────────┘
               ↓
 ┌────────────────────────────┐
-│ 5. Scene Server / Output   │
+│ 5. Semantic Query / POI    │
 └─────────────┬──────────────┘
               ↓
 ┌────────────────────────────┐
-│ 6. Semantic Query / POI    │
+│ 6. Leo Handoff Boundary    │
 └────────────────────────────┘
 ```
 
-Autonomous locomotion using `rl_hnav` is integrated after the reconstruction path works.
+Two cross-cutting / later modules sit beside this core path:
+
+```text
+A. Nav2 + G1 locomotion executor
+   → autonomous survey viewpoints
+
+B. Optional VGGT branch
+   → learned RGB-only reconstruction for comparison / enrichment
+```
+
+## Primary mapping decision
+
+**RTAB-Map is the primary metric mapping backbone.**
+
+Why:
+
+- RealSense already provides metric aligned depth.
+- RTAB-Map consumes RGB-D directly.
+- metric scale is available from the start.
+- it produces camera/robot poses, a metric 3D map, a 2D occupancy map, pose-graph state, and ROS TF needed by robotics.
+- it integrates naturally with ROS 2 and Nav2.
+- it removes VGGT scale recovery from the critical path.
+
+## Nav stack ownership rule
+
+Only **one** mapping/localization stack should own `map -> odom` at a time.
+
+Primary plan:
+
+```text
+RTAB-Map
+    ↓
+map -> odom
+/map
+metric 3D scene
+    ↓
+Nav2
+```
+
+`rl_hnav`'s existing SLAM Toolbox setup remains a useful fallback/reference, but **do not run SLAM Toolbox and RTAB-Map simultaneously if both publish `map -> odom`**.
+
+If RTAB-Map's navigation-map path proves unstable during the hackathon, a permitted fallback is:
+
+```text
+RTAB-Map = metric 3D / semantic scene
+SLAM Toolbox = Nav2 2D map/localization
+```
+
+but that should be a deliberate fallback, not the default architecture.
 
 ---
 
@@ -191,7 +258,7 @@ Autonomous locomotion using `rl_hnav` is integrated after the reconstruction pat
 
 ## Goal
 
-Provide synchronized, calibrated scene observations from the G1.
+Provide synchronized, calibrated scene observations from the G1 for RTAB-Map, semantic perception, offline replay, and optional VGGT experiments.
 
 ## Sensors
 
@@ -212,7 +279,7 @@ Useful:
 
 ## RealSense
 
-Run `realsense-ros` on the G1 onboard Orin if possible.
+Run `realsense-ros` on the G1 onboard Orin if possible; running it on the Humble laptop is also acceptable if the camera is physically connected there.
 
 Desired outputs are standard ROS 2 topics equivalent to:
 
@@ -224,7 +291,9 @@ Desired outputs are standard ROS 2 topics equivalent to:
 
 Actual topic names must be discovered on the hardware rather than assumed.
 
-Depth used for VGGT metric anchoring must be **aligned to the RGB/color frame**.
+**Aligned metric depth is now a primary mapping input, not merely a scale anchor for VGGT.**
+
+RTAB-Map should consume RGB + aligned depth + camera calibration.
 
 ## LiDAR
 
@@ -238,13 +307,17 @@ The existing G1 / Unitree LiDAR stream is expected to already be available as a 
 
 Do not create a new LiDAR driver if the robot already publishes the required cloud.
 
+For the core mapping path, LiDAR is initially used for:
+
+- geometric validation
+- obstacle perception / `/scan`
+- optional ICP / registration refinement if time permits
+
 ## Recording
 
-Record the raw sensor streams to `rosbag2`.
+Record raw sensor streams to `rosbag2`.
 
-The system must support replaying reconstruction with the G1 powered off.
-
-This is both a development workflow and demo insurance.
+The entire mapping pipeline must support replay with the G1 powered off.
 
 Minimum useful recording:
 
@@ -259,285 +332,266 @@ TF static
 odometry if available
 ```
 
----
-
-# 8. Module 2 — Keyframe Manager
-
-VGGT should **not** consume the live RGB stream frame-by-frame at camera rate.
-
-VGGT is treated as a batch / semi-batch reconstruction system.
-
-Initial target:
-
-```text
-~8–20 keyframes
-```
-
-Later this can be increased if compute allows.
-
-Keyframe selection should prefer:
-
-- sharp frames
-- spatially diverse viewpoints
-- sufficient translational baseline
-- useful overlap between adjacent views
-- views covering the POI workspace
-- views compatible with available GPU memory
-
-Reject:
-
-- motion-blurred frames
-- near-duplicate frames
-- frames during strong body motion where possible
-
-Each keyframe record should retain:
-
-```text
-RGB image
-aligned metric depth
-timestamp
-camera intrinsics
-optional camera/base pose metadata
-```
+The canonical rosbag is the shared development fixture for mapping, semantic perception, and optional VGGT work.
 
 ---
 
-# 9. Module 3 — VGGT Reconstruction
+# 8. Module 2 — RTAB-Map RGB-D Mapping
 
-## Model decision
+## Goal
 
-We do **not currently have access to VGGT-Ω**.
+Build the primary **metric robotics map directly from RealSense RGB-D**.
 
-Use the public / older VGGT release first.
-
-Primary goal is not model novelty. It is to obtain:
-
-- relative camera poses
-- dense predicted depth / point maps
-- confidence
-- visual 3D reconstruction
-
-The VGGT module is feed-forward.
-
-Do not add SLAM or loop-closure logic inside this module.
+RTAB-Map is the core mapper for V1.
 
 Conceptually:
 
 ```text
-RGB keyframes
-    ↓
-VGGT
-    ↓
-camera poses
-dense geometry
-confidence
+RGB + aligned metric depth + CameraInfo
+                │
+                ▼
+           RGB-D odometry
+                │
+                ▼
+            RTAB-Map
+                │
+      ┌─────────┼──────────┐
+      ▼         ▼          ▼
+ metric poses  3D map    2D map
+      │                    │
+      └──────── TF ────────┘
 ```
 
-## Compute
+Expected useful outputs include:
 
-Preferred:
+- metric camera / robot trajectory
+- metric colored 3D point-cloud map
+- 2D occupancy grid for navigation
+- pose graph / loop-closure constraints
+- map database
+- `map -> odom` transform while mapping/localizing
+- ROS map state usable by Nav2
 
-- run on the G1 Orin if memory/runtime is acceptable
+Exact ROS topic names should be taken from the installed `rtabmap_ros` configuration rather than hardcoded here.
 
-Allowed:
+## Input expectations
 
-- laptop GPU
-- local workstation
-- cloud/offboard GPU
-
-The architecture must not depend on VGGT running specifically onboard.
-
-Use one interface so the backend can move between:
+Primary:
 
 ```text
-Orin
-laptop
-cloud
+RGB image
+aligned metric depth
+CameraInfo
 ```
 
-without changing the rest of the pipeline.
-
-Initial precision target:
+Optional / supporting:
 
 ```text
-BF16 where supported
+/odom
+IMU
+LiDAR-derived scan or cloud
+TF
 ```
+
+Start with the simplest reliable RGB-D configuration.
+
+Do not add every sensor into RTAB-Map on the first run.
+
+Recommended progression:
+
+```text
+RGB-D only
+    ↓
+verify metric map + trajectory
+    ↓
+add odometry / IMU if useful
+    ↓
+add LiDAR / ICP only if it materially improves robustness
+```
+
+## Keyframe handling
+
+RTAB-Map manages its own mapping nodes / keyframes internally.
+
+The existing `keyframe_manager` package is still useful for:
+
+- offline inspection
+- Grounding DINO + SAM2 semantic querying
+- optional VGGT reconstruction
+- creating reproducible image/depth fixtures
+
+It is **no longer a dependency for primary mapping**.
 
 ---
 
-# 10. Module 4 — Metric Registration
+# 9. Optional Module — VGGT Learned Reconstruction
 
-This is currently the most important reconstruction risk.
+VGGT is no longer on the critical path.
 
-VGGT geometry must not be assumed to be metrically correct.
+Use it only if the RTAB-Map metric baseline is already working or if a parallel team member can pursue it independently.
 
-There are two distinct problems:
+## Purpose
 
-1. **metric scale**
-2. **coordinate-frame registration**
+VGGT can provide:
 
-Do not confuse them.
+- learned RGB-only camera poses
+- dense predicted geometry / point maps
+- confidence
+- a visually rich feed-forward reconstruction
 
-## 10.1 Metric Scale
+This can be useful for:
 
-Use the RealSense aligned metric depth as the primary scale anchor.
+- comparing learned reconstruction vs classical RGB-D SLAM
+- producing an additional visual scene representation
+- research/demo value
+- testing whether learned geometry adds useful structure
 
-For each selected frame, compare VGGT depth and RealSense depth at corresponding RGB pixels.
-
-Only use valid pixels.
-
-Recommended mask:
-
-```text
-RealSense depth valid
-VGGT confidence above threshold
-not near invalid-depth boundaries
-not obviously dynamic
-within useful RealSense depth range
-```
-
-Per-frame scale:
+Conceptually:
 
 ```text
-s_i = median(
-    D_realsense(u,v) /
-    D_vggt(u,v)
-)
+selected RGB keyframes
+        ↓
+       VGGT
+        ↓
+camera poses + dense geometry + confidence
+        ↓
+optional alignment against RTAB-Map world
 ```
 
-Then robustly combine the frame-level estimates:
+We do **not currently have access to VGGT-Ω**. If VGGT is used, use the public VGGT release.
+
+The backend must remain swappable between Orin, laptop GPU, and cloud GPU.
+
+VGGT output must not replace the metric RTAB-Map world unless it has been explicitly registered and validated.
+
+---
+
+# 10. Module 3 — LiDAR / Frame Validation and Optional Fusion
+
+With RTAB-Map as the primary RGB-D mapper, **global metric-scale recovery is no longer a core problem**.
+
+The RealSense depth already provides metric geometry.
+
+The remaining geometric problems are:
+
+1. correct sensor extrinsics
+2. consistent ROS frame ownership
+3. map / odom / base / camera / LiDAR TF correctness
+4. validating RTAB-Map geometry against LiDAR
+5. optional LiDAR-assisted registration / ICP if useful
+
+## 10.1 Frame chain
+
+Maintain an explicit TF chain such as:
 
 ```text
-s = median(s_1, s_2, ... s_N)
+map
+  ↓
+odom
+  ↓
+robot_center / base
+  ├── camera frame
+  └── lidar frame
 ```
 
-Track the per-frame values.
+Never pass XYZ coordinates without a `frame_id`.
 
-Example diagnostic:
+Verify `T_base_camera`, `T_base_lidar`, `map -> odom`, and `odom -> base` before using the map for G1-to-Leo handoff.
+
+## 10.2 LiDAR cross-check
+
+Use LiDAR as an independent geometric validation source.
+
+Check walls, table surfaces, room dimensions, floor orientation, large object geometry, and consistency between LiDAR and RGB-D map.
+
+The milestone should include numerical checks, not only visual overlap.
+
+## 10.3 Optional fusion / ICP
+
+If RGB-D odometry or map alignment benefits from LiDAR, optional later work may use:
 
 ```text
-frame 01  1.73
-frame 02  1.71
-frame 03  1.72
-frame 04  2.34  <- investigate
+LiDAR cloud + RTAB-Map RGB-D geometry
+                ↓
+        ICP / scan registration
+                ↓
+      refined constraint / validation
 ```
 
-Do not silently hide large disagreement.
+Do not add ICP merely because it is available; add it only if the baseline needs it.
 
-## 10.2 Coordinate Frame Registration
+## 10.4 VGGT-only note
 
-Multiplying the VGGT scene by `s` makes distances metric.
-
-It does **not** automatically place the reconstruction into the ROS `map` frame.
-
-Initially it is acceptable to define:
-
-```text
-vggt_world
-```
-
-as the reconstruction frame.
-
-Later establish:
-
-```text
-T_map_vggt
-```
-
-to connect VGGT space to the shared robot world frame.
-
-General transform:
+If the optional VGGT branch is used, VGGT still needs explicit registration:
 
 ```text
 p_map = s R p_vggt + t
 ```
 
-where:
+For VGGT only:
 
-- `s` = scale
-- `R` = orientation
-- `t` = translation
+- RealSense depth may estimate `s`
+- RTAB-Map / TF provides the shared world reference
+- LiDAR can cross-check the result
 
-For the first reconstruction milestone, publishing a correct metric cloud in `vggt_world` is sufficient.
-
-For cross-robot handoff, `T_map_vggt` becomes mandatory.
-
-## 10.3 LiDAR Cross-Check
-
-LiDAR is the **independent geometric validation source**.
-
-Do not use LiDAR as the primary scale source unless RealSense depth is unavailable or unreliable.
-
-Use LiDAR to verify:
-
-- wall distances
-- table surfaces
-- room dimensions
-- floor orientation
-- major object geometry
-
-Compare the scaled VGGT scene against LiDAR.
-
-The metric milestone should include numerical checks, not only visual overlap.
+This is not part of the core RTAB-Map path.
 
 ---
 
-# 11. Module 5 — Scene Server / ROS Output
+# 11. Module 4 — Scene / Map Outputs
 
-After metric registration, publish the scene back into ROS 2.
+The primary scene representation now comes from RTAB-Map.
 
-Primary outputs:
+Core outputs required by the project:
 
 ```text
-/vggt/scene_cloud
-/vggt/camera_path
+metric colored 3D scene / cloud
+metric camera / robot trajectory
+2D occupancy map
+map -> odom TF
+map database / graph state
 ```
 
-Optional:
+For Nav2, the important robotics outputs are:
 
 ```text
-/vggt/status
-/vggt/keyframes
-/vggt/confidence
+/map
+map -> odom
+/odom
 ```
 
-Publish the necessary TF frames.
-
-Initial scene frame:
+For semantic perception / Leo handoff, the important outputs are:
 
 ```text
-vggt_world
-```
-
-Later:
-
-```text
-map
-  ↓
-vggt_world
+metric 3D scene
+camera poses
+map frame
+supporting RGB-D observations
 ```
 
 Use RViz for visualization.
 
-Also save offline artifacts such as:
+Save reproducible offline artifacts where practical, for example:
 
 ```text
-scene.ply
-camera_poses_metric.json
-registration_metrics.json
+RTAB-Map database
+exported metric scene cloud / mesh
+trajectory
+map metadata
+semantic POI records
 ```
 
-Primary G1 reconstruction deliverable:
+The existing `scene_server` package may be adapted to expose a stable project-level scene API independent of the mapping backend.
 
-> a metrically correct colored point cloud with a defined coordinate frame.
+Optional VGGT outputs should use a clearly separate namespace such as `/vggt/scene_cloud` and `/vggt/camera_path`.
 
 ---
 
-# 12. Module 6 — Natural-Language Query / POI
+# 12. Module 5 — Natural-Language Query / POI
 
-Do not query the 3D point cloud directly in V1.
+Do not query the raw 3D point cloud directly in V1.
 
-Use the RGB keyframes for semantic detection and then lift the result into 3D.
+Use RGB observations for semantic detection, then lift the result into the RTAB-Map metric world.
 
 Preferred pipeline:
 
@@ -552,19 +606,17 @@ SAM 2
     ↓
 object mask
     ↓
-aligned depth / VGGT geometry
+aligned RealSense metric depth
+    +
+camera pose in RTAB-Map
     ↓
 back-project mask into 3D
+    ↓
+transform into map frame
     ↓
 multi-view fusion
     ↓
 3D POI
-```
-
-Example query:
-
-```text
-"red bottle"
 ```
 
 Output contract:
@@ -574,27 +626,23 @@ POI {
     id
     label
     xyz
-    frame_id
+    frame_id   # expected: map for handoff
     confidence
     supporting_keyframes
 }
 ```
 
-Optional later:
+For V1, use the RealSense depth as the geometric source for the object whenever possible.
 
-```text
-3D bounding box
-object mask
-object snapshot
-```
+Do not make semantic localization depend on VGGT.
 
 ---
 
 # 13. `rl_hnav` Role
 
-`rl_hnav` is the G1 locomotion / navigation execution layer.
+`rl_hnav` is a G1 locomotion / navigation execution option. Under the event rules, the preferred fast path is the Unitree high-level Loco/Sport client; `rl_hnav` remains the low-level option when the Section 25 safety requirements are satisfied.
 
-Do not treat it as the reconstruction system.
+Do not treat it as the mapping / reconstruction system. RTAB-Map is the primary metric mapping backbone.
 
 The useful interface is:
 
@@ -731,13 +779,13 @@ Do not make stairs or rough-terrain locomotion a demo dependency.
 
 ---
 
+---
+
 # 16. Milestones
 
 ## M0 — ROS / Sensor Connectivity
 
-Goal:
-
-> Reliable access to all required G1 sensor streams and rosbag recording.
+Goal: reliable access to all required G1 sensor streams and rosbag recording.
 
 Acceptance criteria:
 
@@ -749,236 +797,219 @@ Acceptance criteria:
 - TF / static transforms understood
 - rosbag records and replays successfully
 
-Deliverable:
+Deliverable: one reproducible canonical rosbag.
 
-```text
-one reproducible rosbag
-```
+## M1 — RTAB-Map Metric RGB-D Map
 
-Do not proceed by assuming topic names. Inspect the physical robot.
-
-## M1 — Visual Reconstruction
-
-Goal:
-
-> Recorded RGB keyframes produce a coherent VGGT reconstruction.
+Goal: recorded or live RealSense RGB-D produces a coherent metric map and trajectory.
 
 Acceptance criteria:
 
-- ~8–20 selected frames
-- VGGT inference succeeds
-- camera trajectory qualitatively matches survey motion
-- reconstructed geometry visually resembles the scene
+- RTAB-Map runs on the RGB-D stream
+- metric trajectory is produced
+- colored 3D geometry resembles the real scene
+- scale agrees with simple physical measurements
+- map database can be saved / reopened
 
 Deliverables:
 
 ```text
-raw VGGT point cloud
-camera poses
-confidence outputs
+RTAB-Map database
+metric trajectory
+metric colored scene
 ```
 
-No metric accuracy requirement yet.
+No VGGT dependency.
 
-## M2 — Metric Reconstruction
+## M2 — LiDAR / TF Validation
 
-Goal:
-
-> VGGT reconstruction becomes metrically correct.
+Goal: confirm the RGB-D map is correctly framed and metrically consistent with the G1 LiDAR.
 
 Acceptance criteria:
 
-- robust RealSense-to-VGGT scale estimate
-- stable per-frame scale estimates
-- known dimensions reconstructed within an agreed tolerance
-- LiDAR overlay broadly agrees with reconstructed surfaces
+- camera and LiDAR extrinsics are known / validated
+- RTAB-Map scene broadly overlays LiDAR geometry
+- known wall / table / room measurements agree within an agreed tolerance
+- TF chain is explicit and inspectable
 
-Deliverables:
+## M3 — ROS / Nav2-Ready Map Outputs
 
-```text
-metric_scene.ply
-scale estimate
-per-frame scale diagnostics
-LiDAR validation result
-```
-
-This is currently the highest-risk reconstruction milestone.
-
-## M3 — ROS Visualization
-
-Goal:
-
-> The metric VGGT scene is available as ROS data.
+Goal: the mapping stack provides the world representation required by RViz and Nav2.
 
 Acceptance criteria:
 
-- `/vggt/scene_cloud` publishes
-- camera path publishes
-- correct `frame_id`
-- scene visible in RViz
-- saved `.ply` matches published cloud
-
-Deliverables:
-
-```text
-/vggt/scene_cloud
-/vggt/camera_path
-scene.ply
-```
+- metric scene visible in RViz
+- `/map` available
+- `map -> odom` available from the selected map/localization owner
+- `/odom` available
+- no competing nodes publish conflicting `map -> odom`
+- Nav2 can consume the resulting map/TF chain
 
 ## M4 — Semantic POI
 
-Goal:
-
-> Natural-language query produces a metric 3D object location.
-
-Acceptance criteria:
-
-Input:
-
-```text
-"red bottle"
-```
-
-Output:
-
-```text
-label
-xyz
-frame_id
-confidence
-```
-
-The POI must visually / physically correspond to the intended object.
+Goal: natural-language query produces a metric 3D object location in the shared map frame.
 
 Preferred implementation:
 
 ```text
-Grounding DINO + SAM2 + RGB-D backprojection
+Grounding DINO
++ SAM2
++ aligned RealSense depth
++ RTAB-Map camera pose
+```
+
+Expected output:
+
+```text
+label
+xyz
+frame_id = map
+confidence
 ```
 
 ## M5 — Autonomous G1 Survey
 
-Goal:
+Goal: G1 autonomously reaches predefined survey viewpoints and continues mapping / capturing observations.
 
-> G1 autonomously reaches predefined survey viewpoints.
-
-Stack:
+Primary navigation stack:
 
 ```text
-SLAM / localization
+RTAB-Map map/localization
     ↓
 Nav2
     ↓
 /cmd_vel
     ↓
-rl_hnav
+G1 locomotion executor
     ↓
 G1
 ```
+
+Preferred fast / lower-risk executor under event rules:
+
+```text
+high-level Unitree Loco/Sport client
+Move(vx, vy, wz)
+```
+
+`rl_hnav` remains a valid low-level option only if the organizer low-level-control requirements are satisfied.
 
 Acceptance criteria:
 
 - NavigateToPose goal accepted
 - G1 reaches a simple indoor goal
 - G1 stops safely
-- keyframe capture triggered after settling
-- multiple viewpoints can be executed sequentially
+- mapping remains coherent
+- multiple viewpoints can execute sequentially
 
-Do not start this milestone before M0–M3 are independently working.
-
-**Event-rule constraint (see Section 25):** `rl_hnav` drives the legs via `LowCmd` = custom low-level control. It must first run on the harness/stand with a working safety supervisor, and only then free-standing, on mats, with two people present. If that path is not cleared, fall back to the built-in locomotion via high-level SDK (Loco/Sport client) as the `/cmd_vel` executor.
+See Section 25 before any actuation.
 
 ## M6 — Shared Frame + Leo Handoff
 
-Goal:
-
-> Produce the G1-side handoff package.
+Goal: produce the G1-side handoff package.
 
 Required outputs:
 
 ```text
 metric scene
-POI
-supporting keyframes
-T_map_vggt
+POI in map frame
+supporting RGB-D observations / keyframes
+shared map frame
 confidence
 ```
 
-Expected handoff contract:
+Expected contract:
 
 ```text
 SceneHandoff {
     scene
-    scene_frame
-    T_map_scene
+    scene_frame        # expected: map
     POI
     supporting_keyframes
     confidence
 }
 ```
 
-Leo-side behavior is intentionally not specified in this version.
+## Stretch M7 — VGGT Comparison Branch
+
+Goal: produce an optional learned RGB-only reconstruction and compare it against the RTAB-Map metric world.
+
+This milestone must never block M0–M6.
 
 ---
 
 # 17. Software Packages / Nodes
 
-Preferred initial package split:
+Preferred project split:
 
 ```text
 g1_sensors
 g1_recorder
-keyframe_manager
-vggt_reconstruction
-metric_registration
+g1_mapping / rtabmap_bringup
 scene_server
 semantic_query
 ```
 
-Do not over-fragment the system.
+Existing / optional helpers:
 
-Some modules may initially be plain Python scripts instead of long-running ROS nodes.
+```text
+keyframe_manager
+vggt_reconstruction        # optional branch
+metric_registration_vggt   # optional branch only
+```
+
+External packages to reuse rather than reimplement:
+
+```text
+realsense-ros
+rtabmap_ros
+Nav2
+rl_hnav / rl_sar where permitted
+pointcloud_to_laserscan where needed
+```
 
 Recommended distinction:
 
 ```text
-real-time acquisition / robot control
+real-time acquisition / mapping / robot control
     -> ROS 2
 
-batch reconstruction / analysis
+offline analysis / optional VGGT experiments
     -> Python first
 
-publish results / integration
-    -> ROS 2
+stable scene / POI interfaces
+    -> ROS 2 project packages
 ```
-
-The VGGT reconstruction and metric registration may initially run offline from rosbag-derived data.
-
-Once stable, they can be wrapped into ROS nodes.
 
 ---
 
 # 18. First Development Workflow
 
-Recommended first-day sequence:
+Recommended execution sequence:
 
 ```text
 1. Get ROS 2 Humble working on development machine
 2. Connect to G1 over Ethernet
 3. Discover existing G1 topics
-4. Verify RGB / depth / LiDAR / IMU / odom
-5. Record rosbag
+4. Verify RGB / aligned depth / CameraInfo / LiDAR / IMU / odom / TF
+5. Record canonical rosbag
 6. Replay rosbag with robot off
-7. Extract ~8–20 RGB-D keyframes
-8. Run VGGT offline
-9. Export raw reconstruction
-10. Solve RealSense-based metric scale
-11. Validate against LiDAR
-12. Publish final cloud into RViz
+7. Install / configure RTAB-Map ROS 2
+8. Run RTAB-Map on replayed RGB-D
+9. Verify metric trajectory + colored 3D map
+10. Validate TF / dimensions against LiDAR
+11. Expose /map + map->odom + scene outputs in RViz
+12. Add Grounding DINO + SAM2 -> metric POI
+13. Integrate Nav2
+14. Integrate safe G1 locomotion executor
+15. Only then pursue optional VGGT comparison if useful
 ```
 
 Do not start with autonomous locomotion.
+
+Do not start by solving VGGT scale.
+
+The first mapping milestone is now **RGB-D -> RTAB-Map -> metric map**.
 
 ---
 
@@ -1010,31 +1041,30 @@ physical safety zone prepared
 
 ---
 
+---
+
 # 20. Engineering Risks
 
-## Risk 1 — VGGT metric scale
-
-Highest current reconstruction risk.
+## Risk 1 — RGB-D odometry / RTAB-Map tracking quality
 
 Mitigations:
 
-- RealSense aligned metric depth
-- confidence masking
-- per-frame robust median ratio
-- reject outlier frames
-- LiDAR cross-check
-- retain RealSense metric point cloud as fallback
+- aligned RealSense depth
+- adequate lighting / visual texture
+- slow / stop survey motion if needed
+- preserve camera calibration
+- use odometry / IMU support if helpful
+- use LiDAR / ICP only if the RGB-D baseline needs it
+- rosbag every run for repeatable tuning
 
 ## Risk 2 — Coordinate-frame mismatch
 
-A metric cloud is not automatically in the ROS map frame.
-
 Mitigations:
 
-- explicit `vggt_world`
-- preserve all frame IDs
-- later solve / publish `T_map_vggt`
+- explicit `map`, `odom`, base, camera, and LiDAR frames
+- validate static extrinsics
 - visualize TF in RViz
+- ensure only one mapping/localization stack owns `map -> odom`
 - never pass unlabelled XYZ coordinates between robots
 
 ## Risk 3 — Sensor timing / DDS issues
@@ -1045,29 +1075,38 @@ Mitigations:
 - preserve timestamps
 - use existing isolated DDS / bridge pattern
 - avoid unnecessary RMW changes
-- verify topics before adding custom bridges
+- verify topics / QoS before adding custom bridges
 
-## Risk 4 — Onboard compute
+## Risk 4 — RTAB-Map + Nav2 integration conflicts
 
-VGGT-1B may not fit / run fast enough on the available Jetson.
+Potential failure mode: RTAB-Map and SLAM Toolbox both publish map state / `map -> odom`.
+
+Mitigations:
+
+- choose one map/localization owner
+- primary = RTAB-Map
+- SLAM Toolbox only as deliberate fallback
+- inspect TF publishers before enabling Nav2
+
+## Risk 5 — Optional VGGT compute
+
+VGGT remains GPU-heavy.
 
 Mitigation:
 
-- keep backend swappable
-- use fewer keyframes
-- use BF16 if supported
-- offload to laptop/cloud if necessary
+- keep the backend swappable
+- do not block the core demo on learned reconstruction
+- use offboard/cloud GPU if needed
 
-Do not block the project on onboard VGGT inference.
-
-## Risk 5 — Autonomous G1 navigation
+## Risk 6 — Autonomous G1 navigation
 
 Mitigation:
 
 - manual survey is valid for M0–M4
-- use `rl_hnav` instead of training a new locomotion controller
 - start on flat indoor terrain
 - use predefined viewpoints before exploration planning
+- prefer high-level Unitree locomotion under event rules
+- use `rl_hnav` only after the required harness/supervisor validation
 
 ---
 
@@ -1075,7 +1114,8 @@ Mitigation:
 
 Do not spend hackathon time on these unless all core milestones are already stable:
 
-- continuous real-time VGGT reconstruction while walking
+- continuous VGGT reconstruction while walking
+- making VGGT the primary mapping system
 - full multi-robot SLAM
 - arbitrary terrain / stairs
 - training a new G1 locomotion policy
@@ -1084,8 +1124,9 @@ Do not spend hackathon time on these unless all core milestones are already stab
 - direct natural-language querying of raw 3D embeddings
 - sophisticated dynamic-object tracking
 - general-purpose manipulation on G1
-- replacing RealSense depth with learned metric depth
+- replacing RealSense metric depth with learned depth
 - perfect dense LiDAR/RGB fusion
+- running RTAB-Map and SLAM Toolbox simultaneously as competing map owners
 
 ---
 
@@ -1104,23 +1145,23 @@ odom
 timestamps
 ```
 
-## Reconstruction side
+## Primary mapping side
 
 ```text
-VGGT camera poses
-VGGT point map / depth
-VGGT confidence
-metric scale
-T_map_vggt
+RTAB-Map metric trajectory
+metric colored 3D map
+2D occupancy map
+map database / pose graph
+map -> odom
 ```
 
 ## Scene side
 
 ```text
-/vggt/scene_cloud
-/vggt/camera_path
-scene.ply
-camera_poses_metric.json
+shared scene in map frame
+/map
+camera / robot trajectory
+supporting RGB-D observations
 ```
 
 ## POI side
@@ -1136,17 +1177,31 @@ POI {
 }
 ```
 
+Expected handoff frame: `map`.
+
 ## Navigation side
 
 ```text
 NavigateToPose
 /map
 /odom
-/scan
+/scan or obstacle input
 /cmd_vel
 ```
 
 ## G1 locomotion side
+
+Preferred high-level path:
+
+```text
+/cmd_vel or equivalent velocity command
+    ↓
+high-level Unitree Loco/Sport client
+    ↓
+Move(vx, vy, wz)
+```
+
+Optional low-level path, only when Section 25 requirements are satisfied:
 
 ```text
 /cmd_vel
@@ -1156,23 +1211,32 @@ rl_hnav / rl_sar
 Unitree LowCmd
 ```
 
+## Optional VGGT side
+
+```text
+VGGT camera poses
+VGGT dense geometry
+VGGT confidence
+T_map_vggt   # only if aligned
+```
+
 ---
 
 # 23. Definition of Success for the G1 Side
 
 Minimum successful G1-side demo:
 
-1. G1 collects a small set of RGB-D observations.
-2. VGGT reconstructs the scene.
-3. RealSense depth makes the reconstruction metric.
-4. LiDAR verifies the metric result.
-5. The metric colored scene is visible in RViz.
-6. A natural-language object query returns a plausible metric 3D POI.
-7. The G1-side system outputs a clear handoff package for Leo.
+1. G1 provides synchronized RGB-D observations and LiDAR.
+2. RTAB-Map builds a coherent **metric** map and trajectory.
+3. LiDAR / physical measurements validate the map geometry and frame setup.
+4. The metric colored scene and 2D map are visible in RViz.
+5. A natural-language object query returns a plausible metric 3D POI in `map`.
+6. The G1-side system outputs a clear map + POI handoff package for Leo.
 
 Stretch:
 
-8. G1 autonomously navigates between survey viewpoints using Nav2 + `rl_hnav`.
+7. G1 autonomously navigates between survey viewpoints using Nav2 plus an event-compliant locomotion executor.
+8. VGGT produces a parallel learned reconstruction aligned / compared against the RTAB-Map world.
 
 ---
 
@@ -1190,12 +1254,14 @@ All agents working on this project should:
 - use standard ROS 2 message types where practical
 - reuse `rl_hnav` components rather than recreating them
 - make hardware actuation opt-in, not default
-- keep the VGGT backend swappable
+- keep RTAB-Map as the primary mapping backend; keep the optional VGGT backend swappable
 - make outputs inspectable in RViz / saved files
 - report assumptions explicitly
 - distinguish observed hardware facts from guesses
 
 If an implementation choice conflicts with this file, stop and surface the conflict rather than silently changing the architecture.
+
+---
 
 ---
 
@@ -1226,17 +1292,48 @@ If an implementation choice conflicts with this file, stop and surface the confl
   `GIT_LFS_SKIP_SMUDGE=1` and set `lfs.fetchexclude '*'` in `VGGT-1B` (see README). On a VGGT
   machine fetch only `model.safetensors`.
 
-### Day-1 task assignment (critical path A→B→C→D; M4/M5 run in parallel)
+### Mapping architecture update (2026-09-25)
+
+This update supersedes the earlier assumption that VGGT is the primary reconstruction path.
+
+**Primary V1 map: RTAB-Map RGB-D.**
+
+```text
+RealSense RGB + aligned metric depth
+            ↓
+         RTAB-Map
+            ↓
+metric trajectory + metric 3D scene + /map + map->odom
+            ↓
+Grounding DINO + SAM2 + depth + camera pose
+            ↓
+3D POI in map frame
+```
+
+LiDAR remains an independent metric / geometry check and a navigation obstacle source. It may later contribute ICP constraints if needed.
+
+VGGT becomes a **parallel stretch branch**:
+
+```text
+keyframe_manager -> VGGT -> optional alignment / comparison to RTAB-Map
+```
+
+The previous `metric_registration` package is no longer required for the primary map. If retained, scope it to **VGGT-only registration** or general map-validation utilities.
+
+The existing `keyframe_manager` remains useful for semantic queries, offline fixtures, and VGGT experiments, but is not required by RTAB-Map.
+
+**Map ownership rule:** RTAB-Map should be the only `map -> odom` owner when it is used for navigation. Do not launch SLAM Toolbox concurrently as another map owner. SLAM Toolbox remains a deliberate fallback only.
+
+### Day-1 task assignment (updated critical path A→B→C→D; semantic work in parallel)
 | Owner | Package(s) | Milestone | Offline-capable |
 |-------|-----------|-----------|-----------------|
 | A | `g1_sensors` + relay/`odom_tf_bridge`/static TF | M0 | needs robot |
-| B | `g1_recorder` + `keyframe_manager` | M0→M1 | yes (vs bag) |
-| C | `vggt_reconstruction` + `/vggt` service API | M1 | yes (fully) |
-| D | `metric_registration` + `scene_server` | M2→M3 | yes (mock VGGT out) |
-| E | `semantic_query` (Grounding DINO + SAM2) | M4 | yes (fully) |
-
-Cross-cutting (assign to lead): freeze the **keyframe struct** + **VGGT-output struct** + topic/
-frame names before coding; own the **canonical shared rosbag**; own the **safety checklist**.
+| B | `g1_recorder` + existing `keyframe_manager` | M0 | yes after canonical bag |
+| C | `g1_mapping` / `rtabmap_ros` bringup + tuning | M1→M3 | yes (from bag) |
+| D | TF/LiDAR validation + `scene_server` canonical outputs | M2→M3 | yes (from bag/map DB) |
+| E | `semantic_query` (Grounding DINO + SAM2 + RGB-D backprojection) | M4 | yes |
+| Stretch | `vggt_reconstruction` + VGGT-only registration/comparison | M7 | yes |
+Cross-cutting (assign to lead): freeze the **sensor/topic/frame contract** + **canonical scene/POI output contract** before coding; own the **canonical shared rosbag**; own the **safety checklist**. The keyframe struct remains frozen for semantic/VGGT/offline work.
 
 ### Recording conventions (`g1_recorder`)
 - Record set: `/camera/color/image_raw`, `/camera/aligned_depth_to_color/image_raw`,
@@ -1254,11 +1351,10 @@ Built and **offline-verified** in `ros2_ws/src/` (dev distro; portable to Humble
   Remaining: **R4** verify real topic names/QoS on robot, **R5** canonical capture + publish shared bag.
 - **Bags:** mcap, no compression. This rosbag2 build needs the **`--topics`** flag (positional
   topics are rejected). `/tf_static` transient_local override confirmed required and working.
-- **`scene_server` is a placeholder owned by D** — the real reconstruction node MUST keep the
-  `/vggt/scene_cloud` topic + `vggt_world` frame contract (a static `map→vggt_world` TF is provided).
+- **`scene_server` is a placeholder owned by D** — adapt it to expose canonical RTAB-Map-backed metric scene/map outputs. Keep `/vggt/scene_cloud` + `vggt_world` only for the optional VGGT branch.
 
-#### FROZEN keyframe struct — Module 2 output, contract for C/D/E
-`keyframe_manager` writes, and VGGT/registration/POI must read:
+#### FROZEN keyframe struct — offline / semantic / optional-VGGT contract
+`keyframe_manager` writes this stable offline fixture. Semantic-query and optional VGGT code may read it; RTAB-Map primary mapping does not depend on it:
 ```
 <output_dir>/
   manifest.json            # {count, keyframes:[{id, dir, blur_var, frame_id}, ...]}
@@ -1284,7 +1380,17 @@ sees zero robot topics). Procedure:
 4. **Record on the laptop** (keeps recording off the robot command path, per §25). Full commands in `g1_ws/README.md`.
 
 Since RealSense runs on the Orin, all sensors share the Orin clock → cross-sensor time sync is a
-non-issue (no chrony/NTP needed); the recorder uses message header stamps.
+non-issue for the recorded robot-side streams; the recorder uses message header stamps.
+
+After R5 canonical capture, the next core test is:
+
+```text
+canonical bag -> RTAB-Map RGB-D -> metric map/trajectory -> LiDAR/TF validation -> RViz
+```
+
+Do not spend critical-path time on VGGT scale recovery unless the RTAB-Map path is already working.
+
+---
 
 # 25. Organizer (x-kom) Rules for the G1 — Binding
 
@@ -1347,7 +1453,7 @@ Agents must never "fix and retry" after an incident, and must not delete or rota
 
 ## 25.5 Effect on the plan
 
-- M0–M4 (sensing, reconstruction, POI): unaffected; built-in mode + sensors + manual/remote survey. Read-only sensor discovery stays the default.
+- M0–M4 (sensing, RTAB-Map metric mapping, validation, POI): unaffected; built-in mode + sensors + manual/remote survey. Read-only sensor discovery stays the default.
 - M5 (autonomous survey): gated by 25.1 / 25.3. Decide early whether to use high-level Loco client (fewer requirements) or `rl_hnav` (harness trial + supervisor first). Budget time for the harness trial and supervisor dry-run.
 - Mounting extra sensors: <= 1 kg, non-destructive, no occluding of existing sensors.
 - Recording (M0): `rosbag2` and supervisor logs run on the dev machine or a non-critical thread; do not add load to the command path.
