@@ -1,0 +1,9 @@
+# Minimal input bag for RTAB-Map RGB-D odometry and mapping.
+# RTAB-Map can generate odometry from RGB-D, so robot odometry, IMU, and LiDAR
+# are intentionally excluded to reduce network and disk load.
+topics:
+  - /camera/color/image_raw
+  - /camera/aligned_depth_to_color/image_raw
+  - /camera/color/camera_info
+  - /tf
+  - /tf_static

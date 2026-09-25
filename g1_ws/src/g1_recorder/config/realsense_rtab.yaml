@@ -1,0 +1,11 @@
+/camera/camera:
+  ros__parameters:
+    # Matching profiles keep aligned depth at 640x480 and reduce raw RGB-D
+    # traffic from about 138 MB/s to about 23 MB/s before DDS overhead.
+    # Fifteen synchronized pairs per second are sufficient for RTAB-Map.
+    rgb_camera.profile: 640x480x15
+    depth_module.profile: 640x480x15
+    align_depth.enable: true
+    enable_sync: true
+    pointcloud.enable: false
+    publish_tf: true

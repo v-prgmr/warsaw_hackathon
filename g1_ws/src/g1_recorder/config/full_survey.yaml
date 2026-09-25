@@ -1,0 +1,12 @@
+# Full survey capture for RTAB-Map, LiDAR validation, and offline analysis.
+# Odom and IMU names were verified on the live robot graph on 2026-09-25.
+# Replay may remap /dog_odom to /odom for RTAB-Map or navigation consumers.
+topics:
+  - /camera/color/image_raw
+  - /camera/aligned_depth_to_color/image_raw
+  - /camera/color/camera_info
+  - /utlidar/cloud_livox_mid360
+  - /dog_imu_raw
+  - /dog_odom
+  - /tf
+  - /tf_static

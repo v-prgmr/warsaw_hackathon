@@ -1,12 +1,11 @@
-# Topics recorded by g1_recorder for the canonical G1 survey bag (project M0).
-# NOTE: names are per AGENTS.md and MUST be verified on the real robot (R4) before the
-# canonical capture (R5). Update this list once `ros2 topic list` confirms the real names.
+# Legacy full-survey topic list. Prefer profile:=rtab or profile:=full_survey.
+# Topic names must still be verified on the real robot before canonical capture.
 topics:
   - /camera/color/image_raw
   - /camera/aligned_depth_to_color/image_raw
   - /camera/color/camera_info
   - /utlidar/cloud_livox_mid360
-  - /imu
-  - /odom
+  - /dog_imu_raw
+  - /dog_odom
   - /tf
   - /tf_static

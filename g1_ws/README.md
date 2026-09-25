@@ -22,7 +22,7 @@ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 # record→replay + tf_static QoS
 ros2 run demo_nodes_cpp talker &
 ros2 run tf2_ros static_transform_publisher --frame-id map --child-frame-id vggt_world &
-ros2 launch g1_recorder record.launch.py            # Ctrl-C to stop -> g1_survey_<ts>/
+ros2 launch g1_recorder record.launch.py profile:=rtab  # Ctrl-C to stop -> g1_survey_<ts>/
 ros2 bag info g1_survey_* && ros2 bag play g1_survey_*
 
 # viz stub
@@ -59,19 +59,26 @@ source <this_ws>/install/setup.bash
 ros2 run g1_recorder discover_sensors.sh            # -> sensor_discovery_<ts>.md
 ```
 The report lists nodes, all topics+types, per-topic QoS/rate, and static TF frames. Then:
-- Copy the **verified** names into `g1_recorder/config/topics.yaml` and
+- Copy the **verified** names into `g1_recorder/config/full_survey.yaml` and
   `keyframe_manager/config/keyframe_params.yaml`. **Do not keep unverified names.**
 - Confirm **aligned depth** exists (RealSense launched with `align_depth:=true`) — required for
   VGGT metric anchoring.
 - If a sensor topic is `best_effort` and capture drops messages, add a QoS override in
   `g1_recorder/config/qos_override.yaml`.
 
+Verified on the live domain-0 graph on 2026-09-25: `/dog_odom` is `nav_msgs/msg/Odometry` with
+frames `odom` -> `robot_center`, and `/dog_imu_raw` is `sensor_msgs/msg/Imu` in `dog_imu_link`.
+The RealSense topics only appear after its ROS node is started.
+
 > Alternative: run `discover_sensors.sh` **directly on the Orin** (zero network variables) and
 > `scp` the report back — surest way to confirm the RealSense namespace and `align_depth`.
 
 ### 4. Record the canonical bag (recorder on the laptop, off the robot command path)
 ```bash
-ros2 launch g1_recorder record.launch.py            # move/teleop the G1 through the survey
+ros2 param load /camera/camera \
+  "$(ros2 pkg prefix g1_recorder)/share/g1_recorder/config/realsense_rtab.yaml"
+ros2 launch g1_recorder record.launch.py profile:=rtab output:=rtab_take
+ros2 launch g1_recorder record.launch.py profile:=full_survey output:=survey_take
 ros2 bag info g1_survey_*                            # all topics present, non-zero counts
 # robot OFF:
 ros2 bag play g1_survey_* && ros2 run keyframe_manager keyframe_node --ros-args -p output_dir:=./keyframes
