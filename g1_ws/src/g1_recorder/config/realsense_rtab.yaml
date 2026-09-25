@@ -2,7 +2,8 @@
   ros__parameters:
     # Matching profiles keep aligned depth at 640x480 and reduce raw RGB-D
     # traffic from about 138 MB/s to about 23 MB/s before DDS overhead.
-    # Fifteen synchronized pairs per second are sufficient for RTAB-Map.
+    # Fifteen synchronized pairs per second are enough for map coloring and POI keyframes
+    # (the RealSense is not the mapping sensor; AGENTS.md §7).
     rgb_camera.profile: 640x480x15
     depth_module.profile: 640x480x15
     align_depth.enable: true

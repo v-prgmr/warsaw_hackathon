@@ -25,7 +25,7 @@ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 # record→replay + tf_static QoS
 ros2 run demo_nodes_cpp talker &
 ros2 run tf2_ros static_transform_publisher --frame-id map --child-frame-id vggt_world &
-ros2 launch g1_recorder record.launch.py profile:=rtab  # Ctrl-C to stop -> g1_survey_<ts>/
+ros2 launch g1_recorder record.launch.py profile:=survey  # Ctrl-C to stop -> g1_survey_<ts>/
 ros2 bag info g1_survey_* && ros2 bag play g1_survey_*
 
 # viz stub
@@ -76,7 +76,7 @@ The report lists nodes, all topics+types, per-topic QoS/rate, and static TF fram
   `g1_recorder/config/live_run.yaml` and
   `keyframe_manager/config/keyframe_params.yaml`. **Do not keep unverified names.**
 - Confirm **aligned depth** exists (RealSense launched with `align_depth.enable:=true`) — required
-  for primary RTAB-Map RGB-D mapping.
+  for POI back-projection and map coloring (mapping itself uses LiDAR + IMU).
 - If a sensor topic is `best_effort` and capture drops messages, add a QoS override in
   `g1_recorder/config/qos_override.yaml`.
 
@@ -91,8 +91,8 @@ The RealSense topics only appear after its ROS node is started.
 ```bash
 ros2 param load /camera/camera \
   "$(ros2 pkg prefix g1_recorder)/share/g1_recorder/config/realsense_rtab.yaml"
-ros2 launch g1_recorder record.launch.py profile:=rtab output:=rtab_take
 ros2 launch g1_recorder record.launch.py profile:=survey output:=survey_take
+# write down 2-3 tape-measured dimensions of the scene next to the bag name (AGENTS.md §10.2)
 ros2 bag info survey_take                            # verify all required topics have messages
 # robot OFF:
 ros2 bag play survey_take --clock             # in another terminal, run keyframe_manager with use_sim_time:=true

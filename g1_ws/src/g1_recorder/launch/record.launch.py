@@ -58,8 +58,9 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("output", default_value=default_out,
                               description="Output bag directory"),
-        DeclareLaunchArgument("profile", default_value="rtab",
-                              description="Topic profile: rtab, survey, live_run (legacy: full_survey)"),
+        DeclareLaunchArgument("profile", default_value="survey",
+                              description="Topic profile: survey (canonical), live_run, "
+                                          "rtab (camera only), legacy full_survey"),
         DeclareLaunchArgument("topics_file", default_value="",
                               description="Absolute topic YAML path; overrides profile"),
         DeclareLaunchArgument("qos_file", default_value="",

@@ -12,7 +12,7 @@ The package has three kinds of YAML configuration. They serve different purposes
 | File | Purpose |
 |---|---|
 | `config/realsense_rtab.yaml` | Configures RealSense resolution, rate, alignment, and sync |
-| `config/rtab.yaml` | Selects the minimal topics recorded for RGB-D RTAB-Map |
+| `config/rtab.yaml` | Camera-only topics for semantics / POI keyframes (not a mapping bag) |
 | `config/survey.yaml` | Canonical raw sensor, robot state and TF inputs |
 | `config/live_run.yaml` | Survey inputs plus observed control and common Nav2/audit outputs |
 | `config/full_survey.yaml` | Legacy smaller survey profile |
@@ -123,7 +123,7 @@ After that setup, change to the directory that should contain the bag and start 
 
 ```bash
 cd ~/workspace/warsaw/datatset_rtab
-ros2 launch g1_recorder record.launch.py profile:=rtab output:=rtab_take_01
+ros2 launch g1_recorder record.launch.py profile:=survey output:=survey_take_01
 ```
 
 ## Configure RealSense
@@ -202,9 +202,10 @@ topics:
   - /another/topic
 ```
 
-### RTAB Profile
+### RTAB Profile (camera only)
 
-`config/rtab.yaml` minimizes network and storage load:
+`config/rtab.yaml` records only the RealSense streams, for semantics / POI keyframes and camera
+checks:
 
 ```yaml
 topics:
@@ -215,8 +216,8 @@ topics:
   - /tf_static
 ```
 
-RTAB-Map can generate odometry with `rgbd_odometry`, so robot odometry, IMU, and LiDAR are omitted
-from this profile.
+It is **not a mapping bag**: RTAB-Map maps from LiDAR + IMU (AGENTS.md §8), and this profile omits
+LiDAR, IMU, odometry and `/tf` from the robot. Use `profile:=survey` for canonical captures.
 
 ### Canonical Survey Profile
 
@@ -298,21 +299,16 @@ An explicit `topics_file` overrides `profile`.
 
 Use unique output directories. Rosbag refuses to overwrite an existing directory.
 
-First record the minimal RTAB take:
-
-```bash
-ros2 launch g1_recorder record.launch.py \
-  profile:=rtab \
-  output:=rtab_take_01
-```
-
-Stop cleanly with `Ctrl-C`. Wait for `Recording stopped` before closing the terminal.
-
-For the canonical raw sensor take, record the survey profile:
+Record the canonical raw sensor take with the survey profile (the default), and write down 2–3
+tape-measured dimensions of the scene next to the bag name (AGENTS.md §10.2):
 
 ```bash
 ros2 launch g1_recorder record.launch.py profile:=survey output:=survey_take_01
 ```
+
+Stop cleanly with `Ctrl-C`. Wait for `Recording stopped` before closing the terminal.
+
+For a camera-only take (semantics / POI keyframes), use `profile:=rtab`.
 
 For a live navigation run (only when the event control requirements are met):
 
@@ -328,7 +324,7 @@ ros2 launch g1_recorder record.launch.py \
   output:=full_survey_take_01
 ```
 
-The default profile is `rtab`. If `output` is omitted, the launch file creates a name such as
+The default profile is `survey`. If `output` is omitted, the launch file creates a name such as
 `g1_survey_20260925_164500`.
 
 Observed short captures used approximately 18 MiB/s for `rtab` and 23 MiB/s for the legacy full
