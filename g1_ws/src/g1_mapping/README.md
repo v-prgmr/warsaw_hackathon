@@ -1,0 +1,55 @@
+# g1_mapping — RTAB-Map LiDAR-inertial mapping (AGENTS.md §8)
+
+MID-360 + IMU give odometry, the 3D map and the 2D occupancy grid; RealSense RGB-D optionally colors
+map nodes. RTAB-Map is the only `map -> odom` owner. Topic and frame names live in
+`config/g1_mapping.yaml`.
+
+```text
+/utlidar/cloud_livox_mid360 -> livox_cloud_fix -> lidar_deskewing -> icp_odometry -> rtabmap
+   (time ns -> s, drop zeros)   (IMU-stabilized frame via imu_to_tf)   (odom->robot_center)   (map->odom, /map, /cloud_map)
+```
+
+## Run on a bag
+
+```bash
+ros2 launch g1_mapping mapping.launch.py use_sim_time:=true
+ros2 bag play bags/full_survey_take_01 --clock
+```
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `odom_source` | `icp` | `icp` = `rtabmap_odom icp_odometry` + IMU; `dog_odom` = `/dog_odom` → TF (fallback) |
+| `use_sim_time` | `false` | `true` when replaying with `--clock` |
+| `use_imu` | `true` | IMU for the ICP motion guess and deskewing |
+| `deskewing` | `true` | deskew with the per-point `time` field |
+| `use_rgbd` | `false` | attach RGB + aligned depth to map nodes (color; grid stays LiDAR-only) |
+| `static_tf` | `true` | publish the **estimated** fallback extrinsics from the YAML (bags without `/tf`). Set `false` once `/tf` comes from the G1 URDF |
+| `database_path` | `~/.ros/g1_rtabmap.db` | RTAB-Map database |
+| `localization` | `false` | localize in an existing database instead of mapping |
+| `rtabmap_viz`, `rviz` | `false` | GUIs (`rviz/mapping.rviz`: TF, `/map`, `/cloud_map`, deskewed scan, `/odom`) |
+
+Save the 2D map while it is being published: `ros2 run nav2_map_server map_saver_cli -f <name>`.
+
+## Why the extra nodes
+
+- `livox_cloud_fix`: the G1 publishes the per-point `time` as float32 **nanoseconds**, while
+  `rtabmap_conversions` reads a float32 `time` as **seconds**. It also drops the ~38 % (0,0,0) points.
+- `odom_to_tf` (only for `odom_source:=dog_odom`): `/dog_odom` → TF + `/odom`, like rl_hnav's
+  `odom_tf_bridge`. Prefer the team's bridge on the live robot.
+
+## Results on `bags/full_survey_take_01` (153 s, ~25 m loop, no `/tf` in the bag → `static_tf:=true`)
+
+| Mode | Odometry length | Nodes | LiDAR loop closures |
+|---|---|---|---|
+| `icp` (default) | 25.1 m, 0 resets | 129 | 13 |
+| `icp` + `use_rgbd` | 24.9 m | 126 | 10 |
+| `dog_odom` | 14.9 m (≈2× short, see AGENTS.md §8) | 113 | 0 |
+
+ICP odometry: median 40 ms per scan (p95 50 ms) at 10 Hz on the dev laptop.
+
+## Known limitations
+
+- The static extrinsics are ground-plane estimates, not a calibration (see the YAML comments).
+- The recording laptop's clock was ~72 s ahead of the robot's clock. Replay is fine (header stamps),
+  but live nodes comparing stamps to `now()` (Nav2, TF timeouts) need the clocks aligned.
+- The first scan logs one `guess`/`deskew` error before the IMU TF is available; harmless.
