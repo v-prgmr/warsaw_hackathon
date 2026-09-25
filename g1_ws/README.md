@@ -10,8 +10,10 @@ ROS 2 packages for the G1 capture → keyframe → visualize path (Module 1/2 + 
 
 ## Build
 ```bash
-cd g1_ws
+conda deactivate 2>/dev/null || true
+cd ~/workspace/warsaw/g1_ws
 source /opt/ros/humble/setup.bash          # or your distro
+which python3                              # must be /usr/bin/python3
 colcon build
 source install/setup.bash
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
@@ -40,18 +42,28 @@ laptop must join the robot's DDS graph over the **wired** link (Wi-Fi will not c
 
 ### 1. Put the laptop on the robot LAN
 ```bash
-# plug Ethernet laptop <-> G1, then (confirm subnet/IP with the robot owner; Unitree default 192.168.123.0/24)
-sudo ip addr add 192.168.123.222/24 dev enp3s0
-sudo ip link set enp3s0 up
+# Plug Ethernet laptop <-> G1. Replace the interface if `ip -brief address` differs.
+sudo ip addr add 192.168.123.222/24 dev enx3c33327bdb58
+sudo ip link set enx3c33327bdb58 up
 ping -c1 <ORIN_IP>                      # e.g. 192.168.123.164 — must succeed
 ```
 
 ### 2. Use the CycloneDDS config bound to the wired NIC
 ```bash
 source /opt/ros/humble/setup.bash
-source ~/unitree_ros2/setup.sh          # sets RMW=rmw_cyclonedds_cpp + CYCLONEDDS_URI=enp3s0
-export ROS_DOMAIN_ID=<same as the Orin> # confirm; default 0
-source <this_ws>/install/setup.bash
+source ~/workspace/warsaw/g1_ws/install/setup.bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=0
+export CYCLONEDDS_URI='<CycloneDDS>
+  <Domain Id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface name="enx3c33327bdb58" priority="default" multicast="default"/>
+      </Interfaces>
+      <AllowMulticast>spdp</AllowMulticast>
+    </General>
+  </Domain>
+</CycloneDDS>'
 ```
 
 ### 3. Discover (read-only) and reconcile config

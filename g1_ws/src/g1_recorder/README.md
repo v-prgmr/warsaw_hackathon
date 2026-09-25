@@ -23,11 +23,23 @@ topic names for `ros2 bag record`.
 From the repository:
 
 ```bash
-cd g1_ws
+# Conda can make ament use ~/anaconda3/bin/python3, which lacks ROS modules.
+conda deactivate 2>/dev/null || true
+
+cd ~/workspace/warsaw/g1_ws
 source /opt/ros/humble/setup.bash
+
+which python3
+python3 -c 'import catkin_pkg; print(catkin_pkg.__file__)'
+
 colcon build --packages-select g1_recorder
 source install/setup.bash
+ros2 pkg prefix g1_recorder
 ```
+
+`which python3` must resolve to `/usr/bin/python3`, not an Anaconda interpreter. Build from
+`g1_ws`, not the repository root. `ros2 pkg prefix g1_recorder` should resolve under
+`g1_ws/install/g1_recorder`.
 
 Rebuild and source the workspace after changing any YAML file. The launch file reads the installed
 copy under `install/g1_recorder/share/g1_recorder/config/`.
@@ -57,7 +69,16 @@ source /opt/ros/humble/setup.bash
 source install/setup.bash
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export ROS_DOMAIN_ID=0
-export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="enx3c33327bdb58"/></Interfaces></General></Domain></CycloneDDS>'
+export CYCLONEDDS_URI='<CycloneDDS>
+  <Domain Id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface name="enx3c33327bdb58" priority="default" multicast="default"/>
+      </Interfaces>
+      <AllowMulticast>spdp</AllowMulticast>
+    </General>
+  </Domain>
+</CycloneDDS>'
 ```
 
 Replace `enx3c33327bdb58` if the wired device has another name. Confirm connectivity without
@@ -68,10 +89,63 @@ ping -c 1 192.168.123.164
 ros2 topic list --no-daemon --spin-time 10
 ```
 
+In every new host terminal used for recording:
+
+```bash
+conda deactivate 2>/dev/null || true
+cd ~/workspace/warsaw/g1_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=0
+export CYCLONEDDS_URI='<CycloneDDS>
+  <Domain Id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface name="enx3c33327bdb58" priority="default" multicast="default"/>
+      </Interfaces>
+      <AllowMulticast>spdp</AllowMulticast>
+    </General>
+  </Domain>
+</CycloneDDS>'
+
+ros2 pkg prefix g1_recorder
+ros2 topic list --no-daemon --spin-time 10 | grep '^/camera'
+```
+
+After that setup, change to the directory that should contain the bag and start the recorder:
+
+```bash
+cd ~/workspace/warsaw/datatset_rtab
+ros2 launch g1_recorder record.launch.py profile:=rtab output:=rtab_take_01
+```
+
 ## Configure RealSense
 
-Start the RealSense ROS node on the Orin with aligned depth enabled. Then apply the package's
-bandwidth-safe RTAB profile from the laptop:
+Before starting RealSense on the Orin, bind its Foxy/CycloneDDS process to `eth0`:
+
+```bash
+source /opt/ros/foxy/setup.bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=0
+export CYCLONEDDS_URI='<CycloneDDS>
+  <Domain Id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface name="eth0" priority="default" multicast="default"/>
+      </Interfaces>
+      <AllowMulticast>spdp</AllowMulticast>
+    </General>
+  </Domain>
+</CycloneDDS>'
+```
+
+Do not reuse a stale Orin URI referencing `wlan0`; the RealSense node will fail before camera
+initialization. Full Orin service stop/start and launch commands are in `start_realsense.md` at the
+repository root.
+
+After starting RealSense on the Orin, apply the package's bandwidth-safe RTAB profile from the
+laptop if those parameters were not already supplied to `rs_launch.py`:
 
 ```bash
 ros2 param load /camera/camera \
