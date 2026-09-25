@@ -1,0 +1,15 @@
+# Canonical raw inputs for robot-off replay. Observed on the live G1 DDS graph;
+# verify message counts/rates on every run (especially the optional robot-state streams).
+topics:
+  - /camera/color/image_raw
+  - /camera/aligned_depth_to_color/image_raw
+  - /camera/color/camera_info
+  - /utlidar/cloud_livox_mid360
+  - /utlidar/imu_livox_mid360
+  - /dog_odom
+  - /dog_imu_raw
+  - /lowstate
+  - /secondary_imu
+  - /lf/bmsstate
+  - /tf
+  - /tf_static

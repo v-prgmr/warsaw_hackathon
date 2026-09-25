@@ -15,7 +15,7 @@ HZ_SECS="${HZ_SECS:-3}"
 
 # Candidate substrings we care about; discovery still lists everything, this just flags the
 # sensor-relevant topics for closer inspection.
-PATTERNS='color|image|depth|camera_info|imu|cloud|lidar|scan|odom|/tf'
+PATTERNS='color|image|depth|camera_info|imu|cloud|lidar|scan|odom|/tf|lowstate|joint_states|bmsstate|wirelesscontroller'
 
 log() { echo "$@" | tee -a "$REPORT" >/dev/null; }
 
@@ -59,7 +59,7 @@ log "_For the full tree run: \`ros2 run tf2_tools view_frames\` (writes frames.p
 log ""
 
 log "## Next: reconcile with config"
-log "- Update \`g1_recorder/config/topics.yaml\` with the verified names above."
+log "- Reconcile \`g1_recorder/config/survey.yaml\` and \`live_run.yaml\` with the verified names above."
 log "- If any sensor topic is **BEST_EFFORT**, note it; the recorder auto-adopts a single"
 log "  publisher's QoS, but add an override if capture drops messages."
 log "- Confirm **aligned depth** exists (needs \`align_depth:=true\` on the RealSense launch)."

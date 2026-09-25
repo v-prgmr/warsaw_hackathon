@@ -1,0 +1,14 @@
+<!-- Optional HOST-ONLY receive-buffer experiment. Do not deploy to the G1. -->
+<CycloneDDS>
+  <Domain Id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface name="enx3c33327bdb58" priority="default" multicast="default"/>
+      </Interfaces>
+      <AllowMulticast>spdp</AllowMulticast>
+    </General>
+    <Internal>
+      <SocketReceiveBufferSize min="10MB"/>
+    </Internal>
+  </Domain>
+</CycloneDDS>

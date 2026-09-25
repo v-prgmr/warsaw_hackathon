@@ -14,17 +14,21 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 
+PROFILES = ("rtab", "survey", "live_run", "full_survey")
+
 
 def _launch_record(context, *args, **kwargs):
     share = get_package_share_directory("g1_recorder")
     profile = LaunchConfiguration("profile").perform(context)
     topics_file = LaunchConfiguration("topics_file").perform(context)
     if not topics_file:
+        if profile not in PROFILES:
+            raise RuntimeError(f"Unknown profile {profile!r}; choose one of {', '.join(PROFILES)}")
         topics_file = os.path.join(share, "config", f"{profile}.yaml")
     if not os.path.isfile(topics_file):
         raise RuntimeError(
             f"Topic profile not found: {topics_file}. "
-            "Use profile:=rtab, profile:=full_survey, or topics_file:=<absolute path>."
+            "Use a named profile or topics_file:=<absolute path>."
         )
     qos_file = LaunchConfiguration("qos_file").perform(context) or os.path.join(
         share, "config", "qos_override.yaml"
@@ -42,8 +46,10 @@ def _launch_record(context, *args, **kwargs):
         "--storage", "mcap",
         "-o", output,
         "--qos-profile-overrides-path", qos_file,
-        *topics,
     ]
+    if profile == "live_run" and not LaunchConfiguration("topics_file").perform(context):
+        cmd.append("--include-hidden-topics")
+    cmd.extend(topics)
     return [ExecuteProcess(cmd=cmd, output="screen")]
 
 
@@ -53,7 +59,7 @@ def generate_launch_description():
         DeclareLaunchArgument("output", default_value=default_out,
                               description="Output bag directory"),
         DeclareLaunchArgument("profile", default_value="rtab",
-                              description="Topic profile name: rtab or full_survey"),
+                              description="Topic profile: rtab, survey, live_run (legacy: full_survey)"),
         DeclareLaunchArgument("topics_file", default_value="",
                               description="Absolute topic YAML path; overrides profile"),
         DeclareLaunchArgument("qos_file", default_value="",

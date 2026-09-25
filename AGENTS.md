@@ -1349,8 +1349,8 @@ Built and **offline-verified** in `ros2_ws/src/` (dev distro; portable to Humble
 `g1_recorder`, `keyframe_manager`, `scene_server` (stub).
 - **R0 build ✅ · R1 record→replay + tf_static QoS ✅ · R2 viz stub ✅ · R3 keyframe extraction ✅.**
   Remaining: **R4** verify real topic names/QoS on robot, **R5** canonical capture + publish shared bag.
-- **Bags:** mcap, no compression. This rosbag2 build needs the **`--topics`** flag (positional
-  topics are rejected). `/tf_static` transient_local override confirmed required and working.
+- **Bags:** mcap, no compression. This rosbag2 build accepts topics as positional arguments
+  (`--topics` is rejected). `/tf_static` transient_local override confirmed required and working.
 - **`scene_server` is a placeholder owned by D** — adapt it to expose canonical RTAB-Map-backed metric scene/map outputs. Keep `/vggt/scene_cloud` + `vggt_world` only for the optional VGGT branch.
 
 #### FROZEN keyframe struct — offline / semantic / optional-VGGT contract
