@@ -5,6 +5,8 @@ Pipeline (odom_source:=icp, default):
   frame from imu_to_tf) -> icp_odometry (odom -> base) -> rtabmap (map -> odom, /map, 3D map)
 odom_source:=dog_odom replaces icp_odometry with /dog_odom -> TF (odom_to_tf); deskewing then
 uses the odom frame.
+imu_source:=livox uses the MID-360 internal IMU (rigid with the LiDAR) instead of /dog_imu_raw:
+livox_imu_fix (accel g -> m/s^2) -> imu_filter_madgwick (orientation).
 use_rgbd:=true attaches RealSense RGB-D to map nodes (color only; the 2D grid stays LiDAR-only).
 
 Topic / frame names and tuning come from config/g1_mapping.yaml.
@@ -35,6 +37,9 @@ def _launch_setup(context):
     odom_source = LaunchConfiguration("odom_source").perform(context)
     if odom_source not in ("icp", "dog_odom"):
         raise RuntimeError(f"odom_source must be 'icp' or 'dog_odom', got '{odom_source}'")
+    imu_source = LaunchConfiguration("imu_source").perform(context)
+    if imu_source not in ("dog", "livox"):
+        raise RuntimeError(f"imu_source must be 'dog' or 'livox', got '{imu_source}'")
     use_sim_time = _bool(context, "use_sim_time")
     use_imu = _bool(context, "use_imu")
     use_rgbd = _bool(context, "use_rgbd")
@@ -59,6 +64,8 @@ def _launch_setup(context):
     if deskewing and fixed_frame:
         scan_topic = topics["cloud_fixed"] + "/deskewed"
 
+    imu_topic = topics["imu"] if imu_source == "dog" else topics["imu_livox_filtered"]
+
     nodes = []
 
     if _bool(context, "static_tf"):
@@ -81,13 +88,28 @@ def _launch_setup(context):
                      "range_max": float(lidar["range_max"])}],
         remappings=[("input", topics["lidar"]), ("output", topics["cloud_fixed"])]))
 
+    if use_imu and imu_source == "livox":
+        nodes.append(Node(
+            package="g1_mapping", executable="livox_imu_fix", output="screen",
+            parameters=[{"use_sim_time": use_sim_time,
+                         "accel_scale": float(cfg["livox_imu"]["accel_scale"])}],
+            remappings=[("input", topics["imu_livox"]), ("output", topics["imu_livox_raw"])]))
+        nodes.append(Node(
+            package="imu_filter_madgwick", executable="imu_filter_madgwick_node",
+            name="livox_imu_filter", output="screen",
+            parameters=[{"use_sim_time": use_sim_time, "use_mag": False, "publish_tf": False,
+                         "world_frame": "enu",
+                         "gain": float(cfg["livox_imu"]["madgwick_gain"])}],
+            remappings=[("imu/data_raw", topics["imu_livox_raw"]),
+                        ("imu/data", topics["imu_livox_filtered"])]))
+
     if odom_source == "icp":
         if use_imu and deskewing:
             nodes.append(Node(
                 package="rtabmap_util", executable="imu_to_tf", output="screen",
                 parameters=[{"use_sim_time": use_sim_time, "fixed_frame_id": fixed_frame,
                              "base_frame_id": base, "wait_for_transform_duration": 0.001}],
-                remappings=[("imu/data", topics["imu"])]))
+                remappings=[("imu/data", imu_topic)]))
         odom_params = {
             "odom_frame_id": frames["odom"],
             "publish_tf": True,
@@ -103,7 +125,7 @@ def _launch_setup(context):
             package="rtabmap_odom", executable="icp_odometry", output="screen",
             parameters=[common, icp_params, odom_params],
             remappings=[("scan_cloud", scan_topic), ("odom", topics["odom"]),
-                        ("imu", topics["imu"] if use_imu else "imu_not_used")]))
+                        ("imu", imu_topic if use_imu else "imu_not_used")]))
     else:
         nodes.append(Node(
             package="g1_mapping", executable="odom_to_tf", output="screen",
@@ -153,7 +175,7 @@ def _launch_setup(context):
                    ("rgbd_image", topics["rgbd_image"])]
     if use_imu:
         # IMU gravity constrains the pose graph (keeps the map level), as in lidar3d.launch.py
-        slam_remaps.append(("imu", topics["imu"]))
+        slam_remaps.append(("imu", imu_topic))
     nodes.append(Node(
         package="rtabmap_slam", executable="rtabmap", output="screen",
         parameters=[common, icp_params, slam_params], remappings=slam_remaps,
@@ -187,6 +209,9 @@ def generate_launch_description():
                               description="true when replaying a bag with --clock."),
         DeclareLaunchArgument("use_imu", default_value="true",
                               description="Use the IMU for the ICP motion guess and deskewing."),
+        DeclareLaunchArgument("imu_source", default_value="dog",
+                              description="dog (/dog_imu_raw, pelvis) or livox (MID-360 internal "
+                                          "IMU, rigid with the LiDAR; bags need its topic)."),
         DeclareLaunchArgument("deskewing", default_value="true",
                               description="Deskew the LiDAR cloud with per-point time."),
         DeclareLaunchArgument("use_rgbd", default_value="false",

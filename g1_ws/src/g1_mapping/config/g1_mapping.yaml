@@ -4,13 +4,16 @@
 
 topics:
   lidar: /utlidar/cloud_livox_mid360       # PointCloud2, ~10 Hz, frame livox_frame, time in ns
-  imu: /dog_imu_raw                        # ~1 kHz, frame dog_imu_link, orientation populated
+  imu: /dog_imu_raw                        # imu_source:=dog. ~1 kHz, dog_imu_link, orientation populated
+  imu_livox: /utlidar/imu_livox_mid360     # imu_source:=livox. 200 Hz, livox_frame, accel in g, no orientation
   dog_odom: /dog_odom                      # odom -> robot_center, ~1 kHz (fallback odometry)
   rgb: /camera/color/image_raw
   depth: /camera/aligned_depth_to_color/image_raw
   camera_info: /camera/color/camera_info
   # outputs of this package
   cloud_fixed: /g1_mapping/cloud           # time in seconds, zero points removed
+  imu_livox_raw: /g1_mapping/imu_livox/data_raw   # accel in m/s^2 (livox_imu_fix)
+  imu_livox_filtered: /g1_mapping/imu_livox/data  # + orientation (imu_filter_madgwick)
   rgbd_image: /g1_mapping/rgbd_image
   odom: /odom                              # odometry used by RTAB-Map / Nav2
 
@@ -30,6 +33,10 @@ lidar:
 
 deskewing:
   slerp: true
+
+livox_imu:                                 # imu_source:=livox only
+  accel_scale: 9.80665                     # the MID-360 IMU reports acceleration in g
+  madgwick_gain: 0.1                       # imu_filter_madgwick default
 
 # ESTIMATED fallback extrinsics for bags recorded WITHOUT /tf (every bag up to 2026-09-25).
 # Not a calibration. Derived from bags/full_survey_take_01: RANSAC ground plane in the depth

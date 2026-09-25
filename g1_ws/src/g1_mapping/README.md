@@ -21,6 +21,7 @@ ros2 bag play bags/full_survey_take_01 --clock
 | `odom_source` | `icp` | `icp` = `rtabmap_odom icp_odometry` + IMU; `dog_odom` = `/dog_odom` → TF (fallback) |
 | `use_sim_time` | `false` | `true` when replaying with `--clock` |
 | `use_imu` | `true` | IMU for the ICP motion guess and deskewing |
+| `imu_source` | `dog` | `dog` = `/dog_imu_raw` (pelvis); `livox` = MID-360 internal IMU via `livox_imu_fix` + `imu_filter_madgwick` (bag needs `/utlidar/imu_livox_mid360`) |
 | `deskewing` | `true` | deskew with the per-point `time` field |
 | `use_rgbd` | `false` | attach RGB + aligned depth to map nodes (color; grid stays LiDAR-only) |
 | `static_tf` | `true` | publish the **estimated** fallback extrinsics from the YAML (bags without `/tf`). Set `false` once `/tf` comes from the G1 URDF |
@@ -34,6 +35,11 @@ Save the 2D map while it is being published: `ros2 run nav2_map_server map_saver
 
 - `livox_cloud_fix`: the G1 publishes the per-point `time` as float32 **nanoseconds**, while
   `rtabmap_conversions` reads a float32 `time` as **seconds**. It also drops the ~38 % (0,0,0) points.
+- `livox_imu_fix` (only for `imu_source:=livox`): `/utlidar/imu_livox_mid360` reports acceleration
+  in **g** and no orientation. It scales to m/s² and `imu_filter_madgwick` adds the orientation.
+  On a 25 s standing capture (2026-09-25): |a| 9.83 m/s², roll −176° (`livox_frame` is upside
+  down), but the yaw drifted ~15° (no magnetometer, gyro bias) vs 0.3° for `/dog_imu_raw`. ICP
+  corrects a small yaw bias per scan, but `dog` stays the default until a walking bag compares both.
 - `odom_to_tf` (only for `odom_source:=dog_odom`): `/dog_odom` → TF + `/odom`, like rl_hnav's
   `odom_tf_bridge`. Prefer the team's bridge on the live robot.
 

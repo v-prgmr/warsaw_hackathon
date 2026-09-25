@@ -25,6 +25,7 @@ setup(
     entry_points={
         "console_scripts": [
             "livox_cloud_fix = g1_mapping.livox_cloud_fix:main",
+            "livox_imu_fix = g1_mapping.livox_imu_fix:main",
             "odom_to_tf = g1_mapping.odom_to_tf:main",
         ],
     },

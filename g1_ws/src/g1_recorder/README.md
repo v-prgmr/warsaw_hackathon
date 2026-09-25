@@ -222,14 +222,17 @@ LiDAR, IMU, odometry and `/tf` from the robot. Use `profile:=survey` for canonic
 ### Canonical Survey Profile
 
 Use `profile:=survey` for reusable robot-off captures. `config/survey.yaml` contains RGB, aligned
-depth, CameraInfo, LiDAR cloud and LiDAR IMU, `/dog_odom`, `/dog_imu_raw`, `/lowstate`,
-`/secondary_imu`, `/lf/bmsstate`, `/tf` and `/tf_static`. LiDAR IMU and the Unitree state topics
-were observed in DDS discovery; confirm they publish useful data at the next session with
-`discover_sensors.sh` and check each bag's counts. The RealSense `/camera/imu` is **not** included:
+depth, CameraInfo, LiDAR cloud and LiDAR IMU, `/dog_odom`, `/dog_imu_raw`, `/secondary_imu`,
+`/lf/lowstate`, `/lf/bmsstate`, `/tf` and `/tf_static`. A 25 s live test capture (2026-09-25,
+robot standing, no camera driver running) had data on every robot topic: LiDAR 10 Hz, LiDAR IMU
+200 Hz, `/dog_odom` / `/dog_imu_raw` / `/secondary_imu` ~1 kHz, `/lf/bmsstate` 20 Hz. Check each
+bag's counts. `/lf/lowstate` is the 20 Hz copy of `/lowstate`; the 1 kHz stream is ~2.4 MB/s and
+20 Hz is enough to regenerate `/tf` (the sensors sit on the torso; only the waist joints move them).
+`live_run` keeps the full-rate `/lowstate`. The RealSense `/camera/imu` is **not** included:
 it was discovered but not verified to publish, and requires a supported IMU camera plus gyro/accel
 configuration. Do not add it before checking the hardware and messages.
 
-`/lowstate` is a Unitree-typed message, not `/joint_states`. The recording host must have the
+`/lowstate` and `/lf/lowstate` are Unitree-typed messages, not `/joint_states`. The recording host must have the
 matching `unitree_hg` message package sourced. Check with `ros2 interface show
 unitree_hg/msg/LowState` (and similarly for other Unitree types); if missing, use the project's
 isolated bridge/container with those interfaces rather than assuming rosbag can deserialize them.
@@ -279,7 +282,7 @@ bridges are captured automatically. `/tf_static` is published by RealSense.
 `livox_frame`. Existing G1 URDF variants contain `d435_link` and `mid360_link`, but their
 extrinsics and correspondence to the observed frames require validation on this robot. Supply a
 calibrated base-to-sensor transform or correctly mapped joint states and
-`robot_state_publisher` during capture; recording `/lowstate` allows the latter to be regenerated
+`robot_state_publisher` during capture; recording `/lf/lowstate` allows the latter to be regenerated
 offline only after a verified converter exists. Neither profile creates the missing TF chain.
 
 ### Custom Profile
@@ -371,7 +374,7 @@ For a survey take, additionally require non-zero counts for:
 /utlidar/cloud_livox_mid360
 /dog_imu_raw
 /dog_odom
-/lowstate
+/lf/lowstate
 /lf/bmsstate
 ```
 
