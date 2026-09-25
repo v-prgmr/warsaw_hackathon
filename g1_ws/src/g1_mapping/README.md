@@ -11,6 +11,9 @@ map nodes. RTAB-Map is the only `map -> odom` owner. Topic and frame names live 
 
 ## Run on a bag
 
+In the sim container (`SIM=1 scripts/run_humble.sh`, DDS domain 77). Never replay on the robot's
+domain 0: the bag's robot topics would reach the live G1 (see `g1_recorder/README.md`).
+
 ```bash
 ros2 launch g1_mapping mapping.launch.py use_sim_time:=true
 ros2 bag play bags/full_survey_take_01 --clock
@@ -28,6 +31,19 @@ ros2 bag play bags/full_survey_take_01 --clock
 | `database_path` | `~/.ros/g1_rtabmap.db` | RTAB-Map database |
 | `localization` | `false` | localize in an existing database instead of mapping |
 | `rtabmap_viz`, `rviz` | `false` | GUIs (`rviz/mapping.rviz`: TF, `/map`, `/cloud_map`, deskewed scan, `/odom`) |
+
+## Compare the IMU sources on a walking bag
+
+```bash
+ros2 run g1_mapping compare_imu_sources bags/<walking_bag>            # in the SIM=1 container
+```
+
+It measures the waist-joint motion while walking (from `/lf/lowstate`: the joints between the pelvis
+IMU and the torso LiDAR) and the raw gyro bias while standing. It then replays the bag through
+`g1_mapping` with `imu_source:=dog` and `livox`, and writes `<bag>_imu_compare/report.md`: lost scans,
+ICP inlier ratio, loop closures, final `map -> odom` correction, trajectory z range on the flat
+floor, and wall/floor thickness in `/cloud_map`. It refuses to replay on `ROS_DOMAIN_ID` 0;
+`--analyze-only` skips the replays. Check the tape measurements against both maps as well.
 
 Save the 2D map while it is being published: `ros2 run nav2_map_server map_saver_cli -f <name>`.
 

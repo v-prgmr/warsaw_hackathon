@@ -403,22 +403,25 @@ the robot and does not establish that UDP buffers caused any observed frame-rate
 
 ## Replay
 
-Replay with the robot off:
+Replay in an isolated DDS domain, **never on the robot's domain 0**: a replayed bag republishes
+`/dog_odom`, `/lf/lowstate`, the LiDAR and (in `live_run` bags) `/api/sport/request` and `/cmd_vel`.
+On domain 0 these reach the live robot's network. The Docker image does this with
+`SIM=1 scripts/run_humble.sh` (domain 77, no robot-NIC binding). By hand:
 
 ```bash
 source /opt/ros/humble/setup.bash
 unset CYCLONEDDS_URI
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-export ROS_DOMAIN_ID=0
-export ROS_LOCALHOST_ONLY=1
+export ROS_DOMAIN_ID=77
 
 ros2 bag play rtab_take_01 --clock
 ```
 
 The recording environment binds CycloneDDS to the robot Ethernet adapter. That adapter may not
-exist after disconnecting the G1, so offline replay must unset `CYCLONEDDS_URI`. Localhost-only mode
-keeps replay traffic on the development machine. Apply the same environment in every terminal that
-runs an offline consumer such as RTAB-Map or RViz.
+exist after disconnecting the G1, so offline replay must unset `CYCLONEDDS_URI`. Apply the same
+environment in every terminal that runs an offline consumer such as RTAB-Map or RViz. Avoid
+`ROS_LOCALHOST_ONLY=1` with CycloneDDS for the mapping stack: it allows only ~9 participants per
+host and the next node fails with "Failed to find a free participant index".
 
 Use `use_sim_time:=true` on consumers when playing with `--clock`. For consumers that require the
 conventional `/odom` name, remap the recorded robot odometry:

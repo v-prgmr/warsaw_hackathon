@@ -24,6 +24,7 @@ setup(
     license="BSD-3-Clause",
     entry_points={
         "console_scripts": [
+            "compare_imu_sources = g1_mapping.compare_imu_sources:main",
             "livox_cloud_fix = g1_mapping.livox_cloud_fix:main",
             "livox_imu_fix = g1_mapping.livox_imu_fix:main",
             "odom_to_tf = g1_mapping.odom_to_tf:main",

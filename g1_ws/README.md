@@ -94,7 +94,9 @@ ros2 param load /camera/camera \
 ros2 launch g1_recorder record.launch.py profile:=survey output:=survey_take
 # write down 2-3 tape-measured dimensions of the scene next to the bag name (AGENTS.md §10.2)
 ros2 bag info survey_take                            # verify all required topics have messages
-# robot OFF:
+# replay only in an isolated DDS domain (SIM=1 scripts/run_humble.sh -> domain 77), never on the
+# robot's domain 0: the bag's /dog_odom, /lf/lowstate, LiDAR (and /api/sport/request in live_run
+# bags) would reach the live robot's network
 ros2 bag play survey_take --clock             # in another terminal, run keyframe_manager with use_sim_time:=true
 ```
 Publish that bag as the team's shared fixture.
