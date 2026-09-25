@@ -27,7 +27,7 @@ ros2 bag play bags/full_survey_take_01 --clock
 | `imu_source` | `dog` | `dog` = `/dog_imu_raw` (pelvis); `livox` = MID-360 internal IMU via `livox_imu_fix` + `imu_complementary_filter` (bag needs `/utlidar/imu_livox_mid360`) |
 | `deskewing` | `true` | deskew with the per-point `time` field |
 | `use_rgbd` | `false` | attach RGB + aligned depth to map nodes (color; grid stays LiDAR-only) |
-| `static_tf` | `true` | publish the **estimated** fallback extrinsics from the YAML (bags without `/tf`). Set `false` once `/tf` comes from the G1 URDF |
+| `static_tf` | `true` | publish the **estimated** fallback extrinsics from the YAML (legacy bags without `/tf` or `/lf/lowstate`). Set `false` when `g1_sensors tf_chain` runs (live, or replaying `/lf/lowstate`) |
 | `database_path` | `~/.ros/g1_rtabmap.db` | RTAB-Map database |
 | `localization` | `false` | localize in an existing database instead of mapping |
 | `rtabmap_viz`, `rviz` | `false` | GUIs (`rviz/mapping.rviz`: TF, `/map`, `/cloud_map`, deskewed scan, `/odom`) |
@@ -74,7 +74,8 @@ ICP odometry: median 40 ms per scan (p95 50 ms) at 10 Hz on the dev laptop.
 
 ## Known limitations
 
-- The static extrinsics are ground-plane estimates, not a calibration (see the YAML comments).
+- The static fallback extrinsics are ground-plane estimates for legacy bags, not a calibration.
+  With `g1_sensors` (G1 URDF + joint states) use `static_tf:=false`.
 - The recording laptop's clock was ~72 s ahead of the robot's clock. Replay is fine (header stamps),
   but live nodes comparing stamps to `now()` (Nav2, TF timeouts) need the clocks aligned.
 - The first scan logs one `guess`/`deskew` error before the IMU TF is available; harmless.

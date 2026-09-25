@@ -1,0 +1,67 @@
+# g1_sensors configuration, read by launch/tf_chain.launch.py (plain YAML, not a ROS params file).
+# Produces the robot's /tf (AGENTS.md §10.1): /lowstate -> /joint_states -> robot_state_publisher
+# (G1 29-DoF rev 1.0 URDF) + the static glue frames below. odom -> robot_center comes from
+# g1_mapping; launch g1_mapping with static_tf:=false while this runs.
+
+topics:
+  lowstate: /lowstate                   # 1 kHz live; survey bags record /lf/lowstate (20 Hz)
+  clock_reference: /dog_imu_raw         # robot-stamped topic used to stamp joint states on the robot clock
+  joint_states: /joint_states
+
+bridge:
+  publish_rate: 50.0                    # Hz, /joint_states and /tf rate (0 = every /lowstate message)
+  stamp_source: robot_clock             # robot_clock | receive
+  clock_window: 2.0                     # s, window for the robot-clock offset estimate
+
+# LowState motor_state order for the G1 29-DoF (unitree_sdk2 G1JointIndex; same order as the
+# URDF's revolute joints). Verified on the robot on 2026-09-25: 29 active motors, mode_machine 5.
+joint_names:
+  - left_hip_pitch_joint
+  - left_hip_roll_joint
+  - left_hip_yaw_joint
+  - left_knee_joint
+  - left_ankle_pitch_joint
+  - left_ankle_roll_joint
+  - right_hip_pitch_joint
+  - right_hip_roll_joint
+  - right_hip_yaw_joint
+  - right_knee_joint
+  - right_ankle_pitch_joint
+  - right_ankle_roll_joint
+  - waist_yaw_joint
+  - waist_roll_joint
+  - waist_pitch_joint
+  - left_shoulder_pitch_joint
+  - left_shoulder_roll_joint
+  - left_shoulder_yaw_joint
+  - left_elbow_joint
+  - left_wrist_roll_joint
+  - left_wrist_pitch_joint
+  - left_wrist_yaw_joint
+  - right_shoulder_pitch_joint
+  - right_shoulder_roll_joint
+  - right_shoulder_yaw_joint
+  - right_elbow_joint
+  - right_wrist_roll_joint
+  - right_wrist_pitch_joint
+  - right_wrist_yaw_joint
+
+# Frames the URDF does not have. Convention: tf2_ros static_transform_publisher
+# (R = Rz(yaw) * Ry(pitch) * Rx(roll)). Checked offline on bags/probe_standing_live (standing,
+# 2026-09-25): LiDAR floor 1.240 m below livox_frame -> pelvis 0.768 m above the floor (URDF feet:
+# 0.790 m); LiDAR floor normal, LiDAR IMU, and torso IMU agree within 0.35 deg through the URDF.
+static_transforms:
+  # /dog_odom's child frame. Identity: /dog_odom z is 0.738 m vs pelvis 0.768-0.790 m above the
+  # floor, i.e. robot_center is the pelvis to within a few cm (Unitree's height estimate).
+  - {parent: robot_center, child: pelvis, xyz: [0.0, 0.0, 0.0], rpy: [0.0, 0.0, 0.0]}
+  # MID-360 driver frame. The rev 1.0 URDF already mounts mid360_link upside down (roll pi), which
+  # matches the data: identity.
+  - {parent: mid360_link, child: livox_frame, xyz: [0.0, 0.0, 0.0], rpy: [0.0, 0.0, 0.0]}
+  # /dog_imu_raw frame = pelvis IMU. Its gravity is ~1.5 deg off the torso-side sensors through
+  # the URDF waist chain (waist encoder zero or IMU mounting; unresolved). No correction here.
+  - {parent: imu_in_pelvis, child: dog_imu_link, xyz: [0.0, 0.0, 0.0], rpy: [0.0, 0.0, 0.0]}
+  # realsense-ros root frame (x forward, z up, like d435_link). UNVERIFIED: check in RViz when the
+  # RealSense runs (its driver publishes camera_link -> optical frames on /tf_static).
+  - {parent: d435_link, child: camera_link, xyz: [0.0, 0.0, 0.0], rpy: [0.0, 0.0, 0.0]}
+  # OAK-D chest camera: MEASURE at mounting time (tape, relative to torso_link) and add, e.g.
+  # - {parent: torso_link, child: oak-d-base-frame, xyz: [x, y, z], rpy: [r, p, y]}

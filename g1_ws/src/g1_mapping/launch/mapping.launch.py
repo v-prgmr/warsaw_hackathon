@@ -108,7 +108,7 @@ def _launch_setup(context):
             nodes.append(Node(
                 package="rtabmap_util", executable="imu_to_tf", output="screen",
                 parameters=[{"use_sim_time": use_sim_time, "fixed_frame_id": fixed_frame,
-                             "base_frame_id": base, "wait_for_transform_duration": 0.001}],
+                             "base_frame_id": base, "wait_for_transform_duration": 0.1}],
                 remappings=[("imu/data", imu_topic)]))
         odom_params = {
             "odom_frame_id": frames["odom"],
@@ -218,7 +218,8 @@ def generate_launch_description():
                               description="Attach RealSense RGB-D to map nodes (color)."),
         DeclareLaunchArgument("static_tf", default_value="true",
                               description="Publish the ESTIMATED fallback extrinsics from the "
-                                          "YAML. Set false when /tf comes from the G1 URDF."),
+                                          "YAML (legacy bags). Set false when g1_sensors "
+                                          "tf_chain provides /tf from the G1 URDF."),
         DeclareLaunchArgument("database_path", default_value="~/.ros/g1_rtabmap.db"),
         DeclareLaunchArgument("delete_db", default_value="true",
                               description="Start a new map (ignored in localization mode)."),

@@ -40,13 +40,16 @@ livox_imu:                                 # imu_source:=livox only
   # estimates it whenever the robot is still: start mapping with the robot standing for a few s.
   bias_alpha: 0.01                         # imu_complementary_filter default
 
-# ESTIMATED fallback extrinsics for bags recorded WITHOUT /tf (every bag up to 2026-09-25).
+# ESTIMATED fallback extrinsics for LEGACY bags recorded without /tf and without /lf/lowstate
+# (full_survey_take_01). Otherwise run g1_sensors tf_chain (the G1 URDF chain) and launch with
+# static_tf:=false; on probe_standing_live the URDF gives livox pitch 3.7 deg (vs 5.8 below).
 # Not a calibration. Derived from bags/full_survey_take_01: RANSAC ground plane in the depth
 # image and in the LiDAR cloud + /dog_odom height (robot_center ~0.72 m above the floor).
 # Cross-check vs the G1 URDF (unitree_ros g1_description, relative to torso_link):
 #   d435_joint   xyz 0.058 0.018 0.420, pitch 0.831 rad  (fit: pitch 0.890, camera 1.29 m above floor)
 #   mid360_joint xyz 0.000 0.000 0.406, pitch 0.040 rad  (fit: pitch 0.101, 1.23 m above floor)
-#   The driver's livox_frame is upside down relative to mid360_link (floor along -z) -> roll pi.
+#   (values from the old g1_29dof.urdf; the robot is rev 1.0, whose mid360_joint is already
+#   upside down: roll pi, pitch 0.051, z 0.428.)
 # When bags contain /tf from robot_state_publisher (G1 URDF + joint_states), launch with
 # static_tf:=false so these do not compete with the URDF chain.
 # Convention: same as tf2_ros static_transform_publisher (R = Rz(yaw) * Ry(pitch) * Rx(roll)).

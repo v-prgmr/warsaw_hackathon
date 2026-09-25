@@ -16,6 +16,7 @@ topics:
   # for regenerating /tf offline, battery for the motion thresholds (§25.2).
   - /lf/lowstate
   - /lf/bmsstate                     # 20 Hz
-  # Only present while our TF nodes (§10.1) or camera drivers run
+  # Only present while g1_sensors tf_chain (§10.1) or the camera drivers run
+  - /joint_states
   - /tf
   - /tf_static
