@@ -1192,3 +1192,48 @@ All agents working on this project should:
 - distinguish observed hardware facts from guesses
 
 If an implementation choice conflicts with this file, stop and surface the conflict rather than silently changing the architecture.
+
+---
+
+## Day-1 Execution Addendum (2026-09-25)
+
+> Decisions made during Day-1 G1 sensing/reconstruction planning. Supplements — does not replace —
+> the sections above. Where this conflicts with an assumption above, this addendum wins for V1.
+
+### Confirmed environment
+- **Dev machine:** Ubuntu 22.04 + ROS 2 Humble, x86_64, Intel Iris Xe (**no CUDA**) → laptop is
+  orchestration / RViz / native-camera only; **never runs VGGT**.
+- **DDS:** whole ROS 2 graph on **`rmw_cyclonedds_cpp`** (set `RMW_IMPLEMENTATION`), **not** Fast
+  DDS; NIC `enp3s0`. Keep the two-CycloneDDS isolation: SDK's bundled **CycloneDDS 0.10.2** stays
+  in a separate process from the system **CycloneDDS 11.x** graph to avoid the XTypes crash.
+- **Reuse (already on the dev machine):** `~/unitree_sdk2` (built), `~/unitree_ros2/setup.sh` (DDS
+  env), and `~/ros2_ws/src/unitree_bridge/src/lowstate_to_jointstate.cpp` — the working
+  isolation-bridge reference (LowState → `/joint_states`). Clone this pattern for any Unitree→ROS
+  relay; do not rebuild it.
+- **RealSense placement:** run `realsense-ros` natively on the **laptop (Humble)** if the head-cam
+  USB reaches it, else on the **Orin**; `align_depth:=true`, `pointcloud.enable:=true`. Verify
+  actual topic names on the robot — do not hardcode.
+- **VGGT compute is swappable and NOT pinned:** candidates = G1 built-in **Jetson Orin**, a
+  separate **8 GB Jetson**, or **cloud GPU**. BF16 where supported. Get it running reliably first,
+  optimize placement later.
+
+### Day-1 task assignment (critical path A→B→C→D; M4/M5 run in parallel)
+| Owner | Package(s) | Milestone | Offline-capable |
+|-------|-----------|-----------|-----------------|
+| A | `g1_sensors` + relay/`odom_tf_bridge`/static TF | M0 | needs robot |
+| B | `g1_recorder` + `keyframe_manager` | M0→M1 | yes (vs bag) |
+| C | `vggt_reconstruction` + `/vggt` service API | M1 | yes (fully) |
+| D | `metric_registration` + `scene_server` | M2→M3 | yes (mock VGGT out) |
+| E | `semantic_query` (Grounding DINO + SAM2) | M4 | yes (fully) |
+
+Cross-cutting (assign to lead): freeze the **keyframe struct** + **VGGT-output struct** + topic/
+frame names before coding; own the **canonical shared rosbag**; own the **safety checklist**.
+
+### Recording conventions (`g1_recorder`)
+- Record set: `/camera/color/image_raw`, `/camera/aligned_depth_to_color/image_raw`,
+  `/camera/color/camera_info`, `/utlidar/cloud_livox_mid360`, IMU, `/odom`, `/tf`, `/tf_static`.
+- **QoS gotchas:** `/tf_static` needs `durability: transient_local` + `history: keep_all` via
+  `--qos-profile-overrides-path`, else RViz opened after playback starts gets no TF. Sensor topics
+  are often `best_effort` → replay subscribers/RViz must match QoS.
+- Produce **one canonical rosbag** as the shared fixture so B/C/D/E develop offline in parallel;
+  the whole pipeline must re-run **robot-off** from it (demo insurance).
