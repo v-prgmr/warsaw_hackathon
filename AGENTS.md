@@ -1242,6 +1242,31 @@ frame names before coding; own the **canonical shared rosbag**; own the **safety
 - Produce **one canonical rosbag** as the shared fixture so B/C/D/E develop offline in parallel;
   the whole pipeline must re-run **robot-off** from it (demo insurance).
 
+### Implementation status — B's packages (updated 2026-09-25)
+Built and **offline-verified** in `ros2_ws/src/` (dev distro; portable to Humble):
+`g1_recorder`, `keyframe_manager`, `scene_server` (stub).
+- **R0 build ✅ · R1 record→replay + tf_static QoS ✅ · R2 viz stub ✅ · R3 keyframe extraction ✅.**
+  Remaining: **R4** verify real topic names/QoS on robot, **R5** canonical capture + publish shared bag.
+- **Bags:** mcap, no compression. This rosbag2 build needs the **`--topics`** flag (positional
+  topics are rejected). `/tf_static` transient_local override confirmed required and working.
+- **`scene_server` is a placeholder owned by D** — the real reconstruction node MUST keep the
+  `/vggt/scene_cloud` topic + `vggt_world` frame contract (a static `map→vggt_world` TF is provided).
+
+#### FROZEN keyframe struct — Module 2 output, contract for C/D/E
+`keyframe_manager` writes, and VGGT/registration/POI must read:
+```
+<output_dir>/
+  manifest.json            # {count, keyframes:[{id, dir, blur_var, frame_id}, ...]}
+  keyframe_NN/
+    rgb.png                # color, bgr8
+    depth.npy              # uint16 MILLIMETRES, aligned to rgb, shape (H, W)
+    camera_info.yaml       # width, height, distortion_model, k[9], d[]
+    meta.yaml              # id, stamp{sec,nanosec}, frame_id, blur_var,
+                           # depth_units="mm", depth_encoding, odom_pose{frame,position}?
+```
+Depth is always stored uint16 mm (16UC1 passed through; 32FC1 m ×1000). Read `depth_units` from
+`meta.yaml`. Selection = sharpness (var-of-Laplacian) ∧ temporal spacing ∧ translational baseline.
+
 # 25. Organizer (x-kom) Rules for the G1 — Binding
 
 Source: the hackathon's G1 usage regulations from x-kom (paraphrased from the Polish original). These override any conflicting statement above. If a task would violate them, stop and surface it.
