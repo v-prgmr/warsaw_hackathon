@@ -1220,6 +1220,11 @@ If an implementation choice conflicts with this file, stop and surface the confl
 - **VGGT compute is swappable and NOT pinned:** candidates = G1 built-in **Jetson Orin**, a
   separate **8 GB Jetson**, or **cloud GPU**. BF16 where supported. Get it running reliably first,
   optimize placement later.
+- **VGGT submodules:** model code in `third_party/vggt` (facebookresearch/vggt), weights in
+  `VGGT-1B` (facebook/VGGT-1B, Git LFS, ~10 GB, CC-BY-NC-4.0). On machines that do not run VGGT
+  (incl. the Iris Xe dev laptop) **never fetch the LFS weights**: init submodules with
+  `GIT_LFS_SKIP_SMUDGE=1` and set `lfs.fetchexclude '*'` in `VGGT-1B` (see README). On a VGGT
+  machine fetch only `model.safetensors`.
 
 ### Day-1 task assignment (critical path A→B→C→D; M4/M5 run in parallel)
 | Owner | Package(s) | Milestone | Offline-capable |
