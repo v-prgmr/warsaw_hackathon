@@ -1,0 +1,6 @@
+[submodule "VGGT-1B"]
+	path = VGGT-1B
+	url = https://huggingface.co/facebook/VGGT-1B
+[submodule "third_party/vggt"]
+	path = third_party/vggt
+	url = https://github.com/facebookresearch/vggt
