@@ -21,7 +21,7 @@ ros2 bag play bags/full_survey_take_01 --clock
 | `odom_source` | `icp` | `icp` = `rtabmap_odom icp_odometry` + IMU; `dog_odom` = `/dog_odom` → TF (fallback) |
 | `use_sim_time` | `false` | `true` when replaying with `--clock` |
 | `use_imu` | `true` | IMU for the ICP motion guess and deskewing |
-| `imu_source` | `dog` | `dog` = `/dog_imu_raw` (pelvis); `livox` = MID-360 internal IMU via `livox_imu_fix` + `imu_filter_madgwick` (bag needs `/utlidar/imu_livox_mid360`) |
+| `imu_source` | `dog` | `dog` = `/dog_imu_raw` (pelvis); `livox` = MID-360 internal IMU via `livox_imu_fix` + `imu_complementary_filter` (bag needs `/utlidar/imu_livox_mid360`) |
 | `deskewing` | `true` | deskew with the per-point `time` field |
 | `use_rgbd` | `false` | attach RGB + aligned depth to map nodes (color; grid stays LiDAR-only) |
 | `static_tf` | `true` | publish the **estimated** fallback extrinsics from the YAML (bags without `/tf`). Set `false` once `/tf` comes from the G1 URDF |
@@ -36,10 +36,13 @@ Save the 2D map while it is being published: `ros2 run nav2_map_server map_saver
 - `livox_cloud_fix`: the G1 publishes the per-point `time` as float32 **nanoseconds**, while
   `rtabmap_conversions` reads a float32 `time` as **seconds**. It also drops the ~38 % (0,0,0) points.
 - `livox_imu_fix` (only for `imu_source:=livox`): `/utlidar/imu_livox_mid360` reports acceleration
-  in **g** and no orientation. It scales to m/s² and `imu_filter_madgwick` adds the orientation.
-  On a 25 s standing capture (2026-09-25): |a| 9.83 m/s², roll −176° (`livox_frame` is upside
-  down), but the yaw drifted ~15° (no magnetometer, gyro bias) vs 0.3° for `/dog_imu_raw`. ICP
-  corrects a small yaw bias per scan, but `dog` stays the default until a walking bag compares both.
+  in **g** and no orientation. It scales to m/s², and `imu_complementary_filter` adds the
+  orientation and estimates the gyro bias while the robot is still (raw bias ~0.6–0.9 °/s; all G1
+  gyros have similar bias, which Unitree compensates onboard for `/dog_imu_raw`). On a 41 s standing
+  capture (2026-09-25): roll 179.6° / pitch 2.7° (`livox_frame` upside down + the URDF's 2.3° mount
+  pitch); yaw drift −0.005 °/s, vs 0.94 °/s with Madgwick (no bias estimation) and −0.016 °/s for
+  `/dog_imu_raw`. Start with the robot standing for a few seconds. `dog` stays the default until a
+  walking bag compares both.
 - `odom_to_tf` (only for `odom_source:=dog_odom`): `/dog_odom` → TF + `/odom`, like rl_hnav's
   `odom_tf_bridge`. Prefer the team's bridge on the live robot.
 

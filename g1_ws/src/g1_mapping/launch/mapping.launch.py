@@ -6,7 +6,7 @@ Pipeline (odom_source:=icp, default):
 odom_source:=dog_odom replaces icp_odometry with /dog_odom -> TF (odom_to_tf); deskewing then
 uses the odom frame.
 imu_source:=livox uses the MID-360 internal IMU (rigid with the LiDAR) instead of /dog_imu_raw:
-livox_imu_fix (accel g -> m/s^2) -> imu_filter_madgwick (orientation).
+livox_imu_fix (accel g -> m/s^2) -> imu_complementary_filter (orientation + gyro bias).
 use_rgbd:=true attaches RealSense RGB-D to map nodes (color only; the 2D grid stays LiDAR-only).
 
 Topic / frame names and tuning come from config/g1_mapping.yaml.
@@ -95,11 +95,11 @@ def _launch_setup(context):
                          "accel_scale": float(cfg["livox_imu"]["accel_scale"])}],
             remappings=[("input", topics["imu_livox"]), ("output", topics["imu_livox_raw"])]))
         nodes.append(Node(
-            package="imu_filter_madgwick", executable="imu_filter_madgwick_node",
+            package="imu_complementary_filter", executable="complementary_filter_node",
             name="livox_imu_filter", output="screen",
             parameters=[{"use_sim_time": use_sim_time, "use_mag": False, "publish_tf": False,
-                         "world_frame": "enu",
-                         "gain": float(cfg["livox_imu"]["madgwick_gain"])}],
+                         "do_bias_estimation": True, "do_adaptive_gain": True,
+                         "bias_alpha": float(cfg["livox_imu"]["bias_alpha"])}],
             remappings=[("imu/data_raw", topics["imu_livox_raw"]),
                         ("imu/data", topics["imu_livox_filtered"])]))
 

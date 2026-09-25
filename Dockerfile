@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Mapping + navigation (AGENTS.md §8, §11): RTAB-Map LiDAR-inertial mapping (g1_mapping), Nav2 consumes
 # its map. rtabmap-ros brings icp_odometry, imu_to_tf, lidar_deskewing and the lidar3d example.
-# imu-tools (imu_filter_madgwick): orientation for IMUs that publish only gyro/accel, e.g. the
+# imu-tools (imu_complementary_filter): orientation + gyro bias for IMUs that publish only gyro/accel, e.g. the
 # MID-360's internal /utlidar/imu_livox_mid360 (/dog_imu_raw already carries orientation).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-rtabmap-ros \

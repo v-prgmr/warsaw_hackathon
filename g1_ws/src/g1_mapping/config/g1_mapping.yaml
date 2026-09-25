@@ -13,7 +13,7 @@ topics:
   # outputs of this package
   cloud_fixed: /g1_mapping/cloud           # time in seconds, zero points removed
   imu_livox_raw: /g1_mapping/imu_livox/data_raw   # accel in m/s^2 (livox_imu_fix)
-  imu_livox_filtered: /g1_mapping/imu_livox/data  # + orientation (imu_filter_madgwick)
+  imu_livox_filtered: /g1_mapping/imu_livox/data  # + orientation (imu_complementary_filter)
   rgbd_image: /g1_mapping/rgbd_image
   odom: /odom                              # odometry used by RTAB-Map / Nav2
 
@@ -36,7 +36,9 @@ deskewing:
 
 livox_imu:                                 # imu_source:=livox only
   accel_scale: 9.80665                     # the MID-360 IMU reports acceleration in g
-  madgwick_gain: 0.1                       # imu_filter_madgwick default
+  # The raw MID-360 gyro has ~0.6-0.9 deg/s bias (drifts between runs). The complementary filter
+  # estimates it whenever the robot is still: start mapping with the robot standing for a few s.
+  bias_alpha: 0.01                         # imu_complementary_filter default
 
 # ESTIMATED fallback extrinsics for bags recorded WITHOUT /tf (every bag up to 2026-09-25).
 # Not a calibration. Derived from bags/full_survey_take_01: RANSAC ground plane in the depth

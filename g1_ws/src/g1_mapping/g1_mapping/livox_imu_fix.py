@@ -1,10 +1,10 @@
-"""Normalize the G1 MID-360 internal IMU (/utlidar/imu_livox_mid360) for imu_filter_madgwick.
+"""Normalize the G1 MID-360 internal IMU (/utlidar/imu_livox_mid360) for an orientation filter.
 
 The stream reports linear_acceleration in g (at rest |a| ~ 1.0; z ~ -1.0 because livox_frame is
 upside down) and leaves orientation all zeros. This node scales the acceleration to m/s^2
 (accel_scale, default 9.80665) and marks the orientation as unknown (orientation_covariance[0] =
--1, REP-145). imu_filter_madgwick then estimates the orientation. Gyro (rad/s), header, and frame
-are passed through.
+-1, REP-145). imu_complementary_filter then estimates the orientation and the gyro bias. Gyro
+(rad/s), header, and frame are passed through.
 
 Topics (remap): input -> raw LiDAR IMU, output -> fixed IMU.
 """
