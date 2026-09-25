@@ -251,8 +251,8 @@ The robot only publishes raw sensor streams. Everything else comes from nodes **
 |---|---|
 | `map -> odom`, `/map`, `/cloud_map` | `g1_mapping` (RTAB-Map) |
 | `odom -> robot_center`, `/odom` | `g1_mapping` `icp_odometry` (default); `odom_to_tf` from `/dog_odom` only in `odom_source:=dog_odom` |
-| `robot_center -> pelvis -> … URDF links` | `robot_state_publisher` (G1 URDF) + `/joint_states` from the `/lowstate` bridge (§10.1) |
-| frames not in the URDF (`livox_frame`, `camera_link`, OAK-D mount, `robot_center <-> pelvis`) | one static-TF launch (§10.1); `g1_mapping static_tf:=true` only for legacy bags without `/tf` |
+| `robot_center -> pelvis -> … URDF links`, `/joint_states` | `g1_sensors tf_chain`: `robot_state_publisher` (G1 URDF) + the `/lowstate` bridge (§10.1) |
+| frames not in the URDF (`livox_frame`, `camera_link`, `dog_imu_link`, OAK-D mount, `robot_center -> pelvis`) | `g1_sensors tf_chain` static glue (§10.1); `g1_mapping static_tf:=true` only for legacy bags without `/tf` or `/lf/lowstate` |
 | camera-internal frames | the RealSense / OAK-D drivers (`/tf_static`) |
 | `/scan` | `pointcloud_to_laserscan` (from the `rl_hnav` bridge) |
 | `/cmd_vel` → legs | Nav2 → locomotion executor (Loco/Sport client, or `rl_hnav` under §25) |
@@ -348,7 +348,7 @@ The entire mapping pipeline must support replay with the G1 powered off.
 /tf_static
 ```
 
-`/tf` is recorded only if our TF nodes (`/lowstate` bridge + `robot_state_publisher` + static glue, §10.1) run during the capture. Run them during capture when possible; `/lf/lowstate` is the fallback for regenerating `/tf` at replay. The full-rate `/lowstate` (~2.4 MB/s) is only needed in `live_run` bags.
+`/tf` is recorded only if our TF nodes (`g1_sensors tf_chain`: `/lowstate` bridge + `robot_state_publisher` + static glue, §10.1) run during the capture. Run them during capture when possible; `/lf/lowstate` is the fallback for regenerating `/tf` at replay. The full-rate `/lowstate` (~2.4 MB/s) is only needed in `live_run` bags.
 
 Semantic streams: OAK-D RGB + aligned depth + CameraInfo (names to be verified, see above). The RealSense streams are optional.
 
@@ -493,14 +493,14 @@ pelvis → waist joints → torso_link
 
 **Extrinsics come from the G1 URDF** (`unitree_ros/robots/g1_description`: `d435_joint`, `mid360_joint` on `torso_link`), published on `/tf` by `robot_state_publisher` from `joint_states`. The waist joints move the head relative to the pelvis, so joint states are required.
 
-**The robot does not publish `/tf`.** We produce it on the host:
+**The robot does not publish `/tf`.** We produce it on the host with `g1_ws/src/g1_sensors` (`ros2 launch g1_sensors tf_chain.launch.py`):
 
-1. `/lowstate` → `/joint_states` bridge (the isolated-DDS `unitree_bridge` / `lowstate_to_jointstate` pattern, §5)
-2. `robot_state_publisher` with the URDF that matches the robot variant (29-DoF, confirmed; which `g1_29dof*` file, e.g. with or without hands, still needs verifying) from `third_party/unitree_ros/robots/g1_description`
-3. one static-TF launch for the glue frames below
+1. `/lowstate` → `/joint_states` bridge, stamped on the robot clock (via `/dog_imu_raw` stamps). It reads `/lowstate` with the `unitree_hg` ROS 2 messages; no Unitree SDK in the process (§5)
+2. `robot_state_publisher` with `g1_29dof_rev_1_0.urdf` (29-DoF, confirmed; all rev 1.0 variants share the sensor mounts, and rev 1.0's upside-down MID-360 matches the data; the older `g1_29dof.urdf` does not)
+3. the static glue frames below (`g1_sensors/config/g1_sensors.yaml`)
 4. `odom -> robot_center` from `g1_mapping` (§6 ownership table)
 
-Run 1–3 during captures so `/tf` lands in the bag. Once they run, launch `g1_mapping` with `static_tf:=false`.
+Run 1–3 during captures so `/tf` lands in the bag; on bags without `/tf`, run them on the replayed `/lf/lowstate`. Launch `g1_mapping` with `static_tf:=false` while they run.
 
 **No calibration.** Verify only with an RViz sanity check:
 
@@ -510,10 +510,10 @@ Run 1–3 during captures so `/tf` lands in the bag. Once they run, launch `g1_m
 
 Frame-convention glue that is not in the URDF must be an explicit, documented static transform:
 
-- `mid360_link -> livox_frame`: observed upside down (floor along −z of `livox_frame`)
-- `d435_link -> camera_link`: the realsense-ros root frame
-- `robot_center <-> pelvis`: unverified
-- `dog_imu_link <->` the URDF IMU link: unverified
+- `mid360_link -> livox_frame`: identity. Verified on a standing bag: the LiDAR floor normal, the LiDAR IMU, and the torso IMU agree within 0.35° through the URDF
+- `d435_link -> camera_link`: identity, the realsense-ros root frame; unverified until the RealSense runs
+- `robot_center -> pelvis`: identity. Pelvis height 0.77 m (LiDAR) / 0.79 m (URDF feet) vs `/dog_odom` z 0.74 m
+- `imu_in_pelvis -> dog_imu_link`: identity. The pelvis IMU's gravity is ~1.5° off the torso-side sensors through the waist joints (waist encoder zero or IMU mounting; unresolved). With `/dog_imu_raw` as the gravity reference the map tilts by that much; `g1_mapping imu_source:=livox` avoids it
 - `torso_link -> <OAK-D mount>`: measured by hand at mounting time; write the numbers down
 
 Never pass XYZ coordinates without a `frame_id`.
@@ -1308,14 +1308,14 @@ Consequences:
 ### Update — OAK-D chest camera, `/tf`, ownership (2026-09-25, night)
 
 - **Semantics move to a chest-mounted OAK-D** (the head RealSense looks at the floor). Topic / frame names, model, and host are to be verified, then added to `survey.yaml` and `g1_mapping.yaml` (§7).
-- **The robot publishes no `/tf`.** It comes from our `/lowstate` bridge + `robot_state_publisher` (G1 URDF) + static glue frames (§10.1). No bag has had `/tf` so far because none of these ran during capture.
+- **The robot publishes no `/tf`.** It comes from `g1_sensors tf_chain`: our `/lowstate` bridge + `robot_state_publisher` (G1 29-DoF rev 1.0 URDF) + static glue frames (§10.1). No bag has had `/tf` so far because it did not run during capture.
 - **Ownership contract** for TF and topics, including which parts of `rl_hnav`'s bridge to disable next to `g1_mapping`: §6.
-- Current people: Vishal — locomotion (`rl_hnav`) + exploration (m-explore); Inko — OAK-D chest mount; stanislawix — `g1_mapping` (C). The `/tf` chain (A) is **unassigned**.
+- Current people: Vishal — locomotion (`rl_hnav`) + exploration (m-explore); Inko — OAK-D chest mount; stanislawix — `g1_mapping` (C) and the `/tf` chain (A, `g1_sensors`; built and checked offline on a standing bag, not yet run live).
 
 ### Day-1 task assignment (updated critical path A→B→C→D; semantic work in parallel)
 | Owner | Package(s) | Milestone | Offline-capable |
 |-------|-----------|-----------|-----------------|
-| A | `g1_sensors`: `/lowstate` → `/joint_states` bridge, `robot_state_publisher` (G1 URDF), static glue frames incl. the OAK-D mount | M0 | needs robot |
+| A | `g1_sensors`: `/lowstate` → `/joint_states` bridge, `robot_state_publisher` (G1 URDF), static glue frames incl. the OAK-D mount (built; OAK-D mount still to add) | M0 | yes from `/lf/lowstate` bags |
 | B | `g1_recorder` + existing `keyframe_manager` | M0 | yes after canonical bag |
 | C | `g1_mapping` (RTAB-Map LiDAR-inertial) bringup + tuning | M1→M3 | yes (from bag) |
 | D | URDF TF chain + physical-measurement validation + `scene_server` canonical outputs | M2→M3 | yes (from bag/map DB) |
@@ -1324,7 +1324,7 @@ Cross-cutting (assign to lead): freeze the **sensor/topic/frame contract** + **c
 
 ### Recording conventions (`g1_recorder`)
 - **Mandatory:** `/utlidar/cloud_livox_mid360`, `/dog_imu_raw`, `/dog_odom`, `/lf/lowstate`, `/tf_static`,
-  plus `/tf` whenever our TF nodes run during capture (the robot does not publish it). Semantic: OAK-D
+  plus `/tf` and `/joint_states` whenever `g1_sensors tf_chain` runs during capture (the robot does not publish them). Semantic: OAK-D
   RGB + aligned depth + CameraInfo (**same resolution**; names to be verified). RealSense streams optional.
   Also: `/utlidar/imu_livox_mid360`, `/secondary_imu`, `/lf/bmsstate`.
   Profiles: `g1_recorder/config/survey.yaml` (default), `live_run.yaml`. Check message counts per bag.
