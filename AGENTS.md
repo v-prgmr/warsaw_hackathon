@@ -1022,6 +1022,7 @@ When interacting with the physical G1:
 - maintain a `/cmd_vel` freshness timeout
 - do not bypass existing G1 safety / motion-switcher logic
 - do not assume a simulator-tested command is safe on hardware
+- replay bags only in an isolated DDS domain (`SIM=1 scripts/run_humble.sh` -> domain 77), never on the robot's domain 0 while connected: a replay republishes `/dog_odom`, `/lf/lowstate`, and the LiDAR, plus `/api/sport/request` and `/cmd_vel` from `live_run` bags, onto the live robot's network
 
 The organizer's (x-kom) rules for using the G1 are binding and take precedence over everything in this file. See **Section 25**.
 
