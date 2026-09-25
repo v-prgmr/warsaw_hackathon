@@ -1,0 +1,16 @@
+keyframe_node:
+  ros__parameters:
+    # --- topics (verify against the real robot / bag in R4) ---
+    color_topic: /camera/color/image_raw
+    depth_topic: /camera/aligned_depth_to_color/image_raw
+    info_topic: /camera/color/camera_info
+    odom_topic: /odom            # optional; if absent, baseline check is skipped
+    # --- output ---
+    output_dir: keyframes         # relative to cwd unless absolute
+    max_keyframes: 20
+    # --- selection thresholds ---
+    blur_threshold: 100.0         # min variance-of-Laplacian; below = too blurry, reject
+    min_translation_m: 0.15       # min baseline vs last accepted keyframe (needs odom)
+    min_time_gap_s: 0.5           # min wall/stamp gap between accepted keyframes
+    sync_slop_s: 0.10             # ApproximateTimeSynchronizer slop
+    sync_queue: 30

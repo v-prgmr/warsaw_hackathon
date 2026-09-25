@@ -35,3 +35,9 @@ Fetch only the weights file the model code loads (`VGGT.from_pretrained` uses `m
 GIT_LFS_SKIP_SMUDGE=1 git submodule update --init --recursive
 git -C VGGT-1B lfs pull --include model.safetensors
 ```
+
+## Packages — [`g1_ws/`](g1_ws/README.md)
+
+ROS 2 capture/keyframe/viz packages (`g1_recorder`, `keyframe_manager`, `scene_server` stub).
+Build with `colcon build` in `g1_ws/`. Offline tests need no robot; to record from the robot
+see **"Testing from the computer connected to the robot"** in [`g1_ws/README.md`](g1_ws/README.md).

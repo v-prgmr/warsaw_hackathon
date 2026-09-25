@@ -1,0 +1,81 @@
+# g1_ws — G1 sensing / capture workspace
+
+ROS 2 packages for the G1 capture → keyframe → visualize path (Module 1/2 + a Module 5 stub).
+
+| Package | Type | Role |
+|---------|------|------|
+| `g1_recorder` | ament_cmake | mcap rosbag capture (launch + QoS overrides + RViz cfg) + `discover_sensors.sh` |
+| `keyframe_manager` | ament_python | select ~8–20 RGB-D keyframes → frozen keyframe struct + manifest |
+| `scene_server` | ament_python | **STUB (owned by D)** — synthetic `/vggt/scene_cloud` in `vggt_world` for the RViz surface |
+
+## Build
+```bash
+cd g1_ws
+source /opt/ros/humble/setup.bash          # or your distro
+colcon build
+source install/setup.bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+```
+
+## Offline test (no robot)
+```bash
+# record→replay + tf_static QoS
+ros2 run demo_nodes_cpp talker &
+ros2 run tf2_ros static_transform_publisher --frame-id map --child-frame-id vggt_world &
+ros2 launch g1_recorder record.launch.py            # Ctrl-C to stop -> g1_survey_<ts>/
+ros2 bag info g1_survey_* && ros2 bag play g1_survey_*
+
+# viz stub
+ros2 run scene_server ply_publisher                 # rviz2 -d src/g1_recorder/rviz/scene.rviz
+
+# keyframe extraction against a synthetic RGB-D source
+ros2 run keyframe_manager fake_rgbd_pub &
+ros2 run keyframe_manager keyframe_node --ros-args -p output_dir:=./keyframes
+```
+
+## Testing from the computer connected to the robot (R4/R5)
+
+The RealSense + LiDAR + odom run on the **Orin**. To see/record them from the dev laptop, the
+laptop must join the robot's DDS graph over the **wired** link (Wi-Fi will not carry it reliably).
+
+### 1. Put the laptop on the robot LAN
+```bash
+# plug Ethernet laptop <-> G1, then (confirm subnet/IP with the robot owner; Unitree default 192.168.123.0/24)
+sudo ip addr add 192.168.123.222/24 dev enp3s0
+sudo ip link set enp3s0 up
+ping -c1 <ORIN_IP>                      # e.g. 192.168.123.164 — must succeed
+```
+
+### 2. Use the CycloneDDS config bound to the wired NIC
+```bash
+source /opt/ros/humble/setup.bash
+source ~/unitree_ros2/setup.sh          # sets RMW=rmw_cyclonedds_cpp + CYCLONEDDS_URI=enp3s0
+export ROS_DOMAIN_ID=<same as the Orin> # confirm; default 0
+source <this_ws>/install/setup.bash
+```
+
+### 3. Discover (read-only) and reconcile config
+```bash
+ros2 run g1_recorder discover_sensors.sh            # -> sensor_discovery_<ts>.md
+```
+The report lists nodes, all topics+types, per-topic QoS/rate, and static TF frames. Then:
+- Copy the **verified** names into `g1_recorder/config/topics.yaml` and
+  `keyframe_manager/config/keyframe_params.yaml`. **Do not keep unverified names.**
+- Confirm **aligned depth** exists (RealSense launched with `align_depth:=true`) — required for
+  VGGT metric anchoring.
+- If a sensor topic is `best_effort` and capture drops messages, add a QoS override in
+  `g1_recorder/config/qos_override.yaml`.
+
+> Alternative: run `discover_sensors.sh` **directly on the Orin** (zero network variables) and
+> `scp` the report back — surest way to confirm the RealSense namespace and `align_depth`.
+
+### 4. Record the canonical bag (recorder on the laptop, off the robot command path)
+```bash
+ros2 launch g1_recorder record.launch.py            # move/teleop the G1 through the survey
+ros2 bag info g1_survey_*                            # all topics present, non-zero counts
+# robot OFF:
+ros2 bag play g1_survey_* && ros2 run keyframe_manager keyframe_node --ros-args -p output_dir:=./keyframes
+```
+Publish that bag as the team's shared fixture.
+
+See `g1_recorder/README.md` for the full command reference and the frozen keyframe struct.

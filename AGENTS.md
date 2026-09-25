@@ -1272,6 +1272,20 @@ Built and **offline-verified** in `ros2_ws/src/` (dev distro; portable to Humble
 Depth is always stored uint16 mm (16UC1 passed through; 32FC1 m ×1000). Read `depth_units` from
 `meta.yaml`. Selection = sharpness (var-of-Laplacian) ∧ temporal spacing ∧ translational baseline.
 
+Code: **`g1_ws/`** (`g1_recorder`, `keyframe_manager`, `scene_server`). Build with `colcon build`.
+
+### Testing from the computer connected to the robot (R4/R5)
+RealSense + LiDAR + odom run on the **Orin**. The dev laptop only sees them if it joins the Orin's
+DDS graph over the **wired** link (Wi-Fi alone will not — verified: with only Wi-Fi up the laptop
+sees zero robot topics). Procedure:
+1. **Join the robot LAN:** plug Ethernet, `sudo ip addr add 192.168.123.222/24 dev enp3s0 && sudo ip link set enp3s0 up`, `ping <ORIN_IP>` (confirm subnet/IP with the robot owner; Unitree default `192.168.123.0/24`).
+2. **DDS env:** `source ~/unitree_ros2/setup.sh` (sets `rmw_cyclonedds_cpp` + `CYCLONEDDS_URI=enp3s0`), `export ROS_DOMAIN_ID=<Orin's>` (confirm; default 0).
+3. **Discover (read-only):** `ros2 run g1_recorder discover_sensors.sh` → report of nodes/topics/QoS/rates/TF. Reconcile `topics.yaml` + `keyframe_params.yaml` with verified names; confirm **aligned depth** exists (`align_depth:=true`). Alternatively run the script **on the Orin** (zero network variables) and `scp` the report back.
+4. **Record on the laptop** (keeps recording off the robot command path, per §25). Full commands in `g1_ws/README.md`.
+
+Since RealSense runs on the Orin, all sensors share the Orin clock → cross-sensor time sync is a
+non-issue (no chrony/NTP needed); the recorder uses message header stamps.
+
 # 25. Organizer (x-kom) Rules for the G1 — Binding
 
 Source: the hackathon's G1 usage regulations from x-kom (paraphrased from the Polish original). These override any conflicting statement above. If a task would violate them, stop and surface it.

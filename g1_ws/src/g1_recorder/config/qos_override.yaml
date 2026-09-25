@@ -1,0 +1,13 @@
+# QoS overrides for `ros2 bag record --qos-profile-overrides-path`.
+#
+# /tf_static is published ONCE with transient_local durability. Without preserving that on
+# record, a consumer (e.g. RViz) that starts AFTER playback begins never receives the static
+# transforms and shows "no transform" errors. keep_all ensures every static TF is retained.
+/tf_static:
+  reliability: reliable
+  durability: transient_local
+  history: keep_all
+
+# Sensor streams are frequently published best_effort. Recording works regardless, but on
+# REPLAY your subscribers/RViz must also be best_effort or they will silently receive nothing.
+# (Left as source QoS here; documented in README.)
