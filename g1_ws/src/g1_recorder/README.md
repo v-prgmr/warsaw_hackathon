@@ -1,8 +1,9 @@
 # G1 Rosbag Capture
 
-`g1_recorder` records timestamped G1 sensor data to MCAP rosbag directories for RTAB-Map and
-full-survey analysis. Recording is non-actuating and can run on the development laptop over the
-wired robot network.
+`g1_recorder` records timestamped G1 sensor data to MCAP bags. Record raw inputs once, then
+regenerate RTAB-Map, scans and semantic results offline. For live navigation, also record commands,
+decisions and diagnostics. Recording is non-actuating and can run on the development laptop over
+the wired robot network.
 
 ## Configuration Files
 
@@ -12,10 +13,13 @@ The package has three kinds of YAML configuration. They serve different purposes
 |---|---|
 | `config/realsense_rtab.yaml` | Configures RealSense resolution, rate, alignment, and sync |
 | `config/rtab.yaml` | Selects the minimal topics recorded for RGB-D RTAB-Map |
-| `config/full_survey.yaml` | Selects RGB-D, LiDAR, robot odometry, IMU, and TF topics |
-| `config/qos_override.yaml` | Preserves transient-local `/tf_static` in the bag |
+| `config/survey.yaml` | Canonical raw sensor, robot state and TF inputs |
+| `config/live_run.yaml` | Survey inputs plus observed control and common Nav2/audit outputs |
+| `config/full_survey.yaml` | Legacy smaller survey profile |
+| `config/qos_override.yaml` | Preserves transient-local `/tf_static` and `/map` |
+| `config/cyclonedds_host_buffer.xml` | Optional host-only receive-buffer experiment |
 
-Camera settings cannot be placed in `rtab.yaml` or `full_survey.yaml`. Those files only contain
+Camera settings cannot be placed in `rtab.yaml` or `survey.yaml`. Those files only contain
 topic names for `ros2 bag record`.
 
 ## Build
@@ -69,6 +73,7 @@ source /opt/ros/humble/setup.bash
 source install/setup.bash
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export ROS_DOMAIN_ID=0
+unset ROS_LOCALHOST_ONLY  # offline playback may have set this to 1
 export CYCLONEDDS_URI='<CycloneDDS>
   <Domain Id="any">
     <General>
@@ -98,6 +103,7 @@ source /opt/ros/humble/setup.bash
 source install/setup.bash
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export ROS_DOMAIN_ID=0
+unset ROS_LOCALHOST_ONLY
 export CYCLONEDDS_URI='<CycloneDDS>
   <Domain Id="any">
     <General>
@@ -212,7 +218,36 @@ topics:
 RTAB-Map can generate odometry with `rgbd_odometry`, so robot odometry, IMU, and LiDAR are omitted
 from this profile.
 
-### Full-Survey Profile
+### Canonical Survey Profile
+
+Use `profile:=survey` for reusable robot-off captures. `config/survey.yaml` contains RGB, aligned
+depth, CameraInfo, LiDAR cloud and LiDAR IMU, `/dog_odom`, `/dog_imu_raw`, `/lowstate`,
+`/secondary_imu`, `/lf/bmsstate`, `/tf` and `/tf_static`. LiDAR IMU and the Unitree state topics
+were observed in DDS discovery; confirm they publish useful data at the next session with
+`discover_sensors.sh` and check each bag's counts. The RealSense `/camera/imu` is **not** included:
+it was discovered but not verified to publish, and requires a supported IMU camera plus gyro/accel
+configuration. Do not add it before checking the hardware and messages.
+
+`/lowstate` is a Unitree-typed message, not `/joint_states`. The recording host must have the
+matching `unitree_hg` message package sourced. Check with `ros2 interface show
+unitree_hg/msg/LowState` (and similarly for other Unitree types); if missing, use the project's
+isolated bridge/container with those interfaces rather than assuming rosbag can deserialize them.
+ROS-standard streams can still be recorded without those packages.
+For `live_run`, also confirm `unitree_go/msg/WirelessController` and `unitree_api/msg/Request` and
+`Response` are installed in the recording environment.
+
+### Live-Run Profile
+
+`profile:=live_run` adds `/cmd_vel`, the **observed** `/api/sport/request` and response,
+`/wirelesscontroller`, `/scan`, `/map`, `/goal_pose`, `/initialpose`, `/plan`, hidden Nav2
+`/navigate_to_pose/_action/feedback` and status, `/rosout`, and `/diagnostics`. The launch enables
+`--include-hidden-topics` for this profile. Only publishing topics are saved: inspect `ros2 bag
+info` after every run. The proposed `/api/loco/*` and `/semantic/*` and `/g1/scene_handoff` names
+are not verified contracts; add the actual topics to `live_run.yaml` once implemented. Save the
+RTAB-Map database and the independent low-level supervisor logs separately when applicable;
+rosbag alone does not replace the required supervisor logs. No low-level command topic is added.
+
+### Legacy Full-Survey Profile
 
 `config/full_survey.yaml` records supporting robot sensors:
 
@@ -236,8 +271,15 @@ These robot topics were verified live:
 | `/dog_imu_raw` | `sensor_msgs/msg/Imu` | Approximately 1 kHz; frame `dog_imu_link` |
 | `/utlidar/cloud_livox_mid360` | `sensor_msgs/msg/PointCloud2` | Approximately 10 Hz; frame `livox_frame` |
 
-The robot currently does not publish dynamic `/tf`. The topic remains in both profiles so future
+The robot currently does not publish dynamic `/tf`. The topic remains in the profiles so future
 bridges are captured automatically. `/tf_static` is published by RealSense.
+
+**TF prerequisite:** the camera's internal TF does not connect `robot_center` to the RealSense or
+`livox_frame`. Existing G1 URDF variants contain `d435_link` and `mid360_link`, but their
+extrinsics and correspondence to the observed frames require validation on this robot. Supply a
+calibrated base-to-sensor transform or correctly mapped joint states and
+`robot_state_publisher` during capture; recording `/lowstate` allows the latter to be regenerated
+offline only after a verified converter exists. Neither profile creates the missing TF chain.
 
 ### Custom Profile
 
@@ -252,7 +294,7 @@ ros2 launch g1_recorder record.launch.py \
 
 An explicit `topics_file` overrides `profile`.
 
-## Record Both Takes
+## Record Takes
 
 Use unique output directories. Rosbag refuses to overwrite an existing directory.
 
@@ -266,7 +308,19 @@ ros2 launch g1_recorder record.launch.py \
 
 Stop cleanly with `Ctrl-C`. Wait for `Recording stopped` before closing the terminal.
 
-Then record the full survey take:
+For the canonical raw sensor take, record the survey profile:
+
+```bash
+ros2 launch g1_recorder record.launch.py profile:=survey output:=survey_take_01
+```
+
+For a live navigation run (only when the event control requirements are met):
+
+```bash
+ros2 launch g1_recorder record.launch.py profile:=live_run output:=live_run_01
+```
+
+The older, smaller `full_survey` profile remains available:
 
 ```bash
 ros2 launch g1_recorder record.launch.py \
@@ -277,8 +331,10 @@ ros2 launch g1_recorder record.launch.py \
 The default profile is `rtab`. If `output` is omitted, the launch file creates a name such as
 `g1_survey_20260925_164500`.
 
-Observed uncompressed storage with the safe camera profile was approximately 18 MiB/s for the RTAB
-profile and 23 MiB/s for the full profile. Keep at least 2 GiB free per planned recording minute.
+Observed short captures used approximately 18 MiB/s for `rtab` and 23 MiB/s for the legacy full
+profile; new survey/live profiles may be larger. A 4.8 GiB, 287-second RTAB bag contained 2,699
+RGB frames (~9.4 Hz), but that alone does **not** identify where missing frames originated. Check
+free space and measure source and recorded rates before a long capture.
 
 ## Pause And Resume
 
@@ -300,6 +356,8 @@ Inspect each take immediately:
 ```bash
 ros2 bag info rtab_take_01
 ros2 bag info full_survey_take_01
+ros2 bag info survey_take_01
+ros2 bag info live_run_01
 ```
 
 For an RTAB take, require non-zero counts for:
@@ -311,25 +369,57 @@ For an RTAB take, require non-zero counts for:
 /tf_static
 ```
 
-For a full-survey take, additionally require non-zero counts for:
+For a survey take, additionally require non-zero counts for:
 
 ```text
 /utlidar/cloud_livox_mid360
 /dog_imu_raw
 /dog_odom
+/lowstate
+/lf/bmsstate
 ```
 
-Depth count may exceed RGB count. The verified camera emitted extra depth frames, but every recorded
-RGB frame had an exact timestamp match in both aligned depth and CameraInfo. This is suitable for
-RTAB-Map. Missing or unmatched RGB frames are the failure condition, not unequal total counts.
+Depth count may exceed RGB count. A short verified capture had exact depth and CameraInfo matches
+for every RGB frame; a later 153-second survey bag had 1,493 exact RGB-depth matches out of 1,494
+RGB frames (and 1,494 CameraInfo matches). Check timestamp pairing on each bag: unequal total
+counts alone do not indicate whether RTAB-Map has usable synchronized RGB-D input.
+
+`/map` and `/tf_static` use transient-local QoS overrides. Check `ros2 topic info -v /map` before
+live capture: a volatile publisher is incompatible with the configured transient-local recorder
+subscription and needs a compatible override for that run. Hidden action topics must appear in
+`ros2 bag info`; enabling hidden discovery does not synthesize absent Nav2 topics.
+
+### Optional host-only receive-buffer experiment
+
+If live source rates exceed bag counts, first measure `ros2 topic hz` with minimal competing
+subscribers and inspect laptop NIC receive-drop counters. To test UDP buffer pressure **on the
+laptop only**, record a before/after bag with the same scene and camera settings. Check the current
+limit with `sysctl net.core.rmem_max`; with host administration approval raise it temporarily, for
+example `sudo sysctl -w net.core.rmem_max=16777216`, and in the recording terminal set
+`CYCLONEDDS_URI=file://$(ros2 pkg prefix g1_recorder)/share/g1_recorder/config/cyclonedds_host_buffer.xml`.
+The 10 MB minimum makes CycloneDDS fail to start if the host's receive-buffer limit was not raised;
+restore the previous `CYCLONEDDS_URI` if testing is interrupted. Replace the XML's laptop interface
+name if it differs. This experiment is opt-in; it does not alter
+the robot and does not establish that UDP buffers caused any observed frame-rate difference.
 
 ## Replay
 
 Replay with the robot off:
 
 ```bash
+source /opt/ros/humble/setup.bash
+unset CYCLONEDDS_URI
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=0
+export ROS_LOCALHOST_ONLY=1
+
 ros2 bag play rtab_take_01 --clock
 ```
+
+The recording environment binds CycloneDDS to the robot Ethernet adapter. That adapter may not
+exist after disconnecting the G1, so offline replay must unset `CYCLONEDDS_URI`. Localhost-only mode
+keeps replay traffic on the development machine. Apply the same environment in every terminal that
+runs an offline consumer such as RTAB-Map or RViz.
 
 Use `use_sim_time:=true` on consumers when playing with `--clock`. For consumers that require the
 conventional `/odom` name, remap the recorded robot odometry:
@@ -351,6 +441,18 @@ sensor-data/best-effort subscription when they otherwise receive no messages.
 - Bind CycloneDDS to the wired interface, not Wi-Fi.
 - Use `--no-daemon` while testing discovery, or restart the local ROS daemon after changing DDS
   environment variables.
+
+### Playback reports that the wired interface is unavailable
+
+The terminal still has a robot-specific `CYCLONEDDS_URI`, but the Ethernet adapter is disconnected.
+For robot-off replay, use:
+
+```bash
+unset CYCLONEDDS_URI
+export ROS_LOCALHOST_ONLY=1
+```
+
+Do not use localhost-only mode while recording from the robot.
 
 ### Camera topics are absent
 

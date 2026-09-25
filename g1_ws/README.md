@@ -4,7 +4,7 @@ ROS 2 packages for the G1 capture → keyframe → visualize path (Module 1/2 + 
 
 | Package | Type | Role |
 |---------|------|------|
-| `g1_recorder` | ament_cmake | mcap rosbag capture (launch + QoS overrides + RViz cfg) + `discover_sensors.sh` |
+| `g1_recorder` | ament_cmake | MCAP `rtab`, canonical `survey`, and audited `live_run` recording profiles + discovery |
 | `keyframe_manager` | ament_python | select ~8–20 RGB-D keyframes → frozen keyframe struct + manifest |
 | `scene_server` | ament_python | **STUB (owned by D)** — synthetic `/vggt/scene_cloud` in `vggt_world` for the RViz surface |
 
@@ -71,10 +71,11 @@ export CYCLONEDDS_URI='<CycloneDDS>
 ros2 run g1_recorder discover_sensors.sh            # -> sensor_discovery_<ts>.md
 ```
 The report lists nodes, all topics+types, per-topic QoS/rate, and static TF frames. Then:
-- Copy the **verified** names into `g1_recorder/config/full_survey.yaml` and
+- Reconcile the **verified** names in `g1_recorder/config/survey.yaml` and
+  `g1_recorder/config/live_run.yaml` and
   `keyframe_manager/config/keyframe_params.yaml`. **Do not keep unverified names.**
-- Confirm **aligned depth** exists (RealSense launched with `align_depth:=true`) — required for
-  VGGT metric anchoring.
+- Confirm **aligned depth** exists (RealSense launched with `align_depth.enable:=true`) — required
+  for primary RTAB-Map RGB-D mapping.
 - If a sensor topic is `best_effort` and capture drops messages, add a QoS override in
   `g1_recorder/config/qos_override.yaml`.
 
@@ -90,10 +91,10 @@ The RealSense topics only appear after its ROS node is started.
 ros2 param load /camera/camera \
   "$(ros2 pkg prefix g1_recorder)/share/g1_recorder/config/realsense_rtab.yaml"
 ros2 launch g1_recorder record.launch.py profile:=rtab output:=rtab_take
-ros2 launch g1_recorder record.launch.py profile:=full_survey output:=survey_take
-ros2 bag info g1_survey_*                            # all topics present, non-zero counts
+ros2 launch g1_recorder record.launch.py profile:=survey output:=survey_take
+ros2 bag info survey_take                            # verify all required topics have messages
 # robot OFF:
-ros2 bag play g1_survey_* && ros2 run keyframe_manager keyframe_node --ros-args -p output_dir:=./keyframes
+ros2 bag play survey_take --clock             # in another terminal, run keyframe_manager with use_sim_time:=true
 ```
 Publish that bag as the team's shared fixture.
 

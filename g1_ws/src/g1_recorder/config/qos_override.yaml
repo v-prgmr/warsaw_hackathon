@@ -8,6 +8,14 @@
   durability: transient_local
   history: keep_all
 
+# The Nav2 map is normally transient_local. Verify the actual publisher QoS
+# before a live run; a volatile map publisher needs a compatible override.
+/map:
+  reliability: reliable
+  durability: transient_local
+  history: keep_last
+  depth: 1
+
 # Sensor streams are frequently published best_effort. Recording works regardless, but on
 # REPLAY your subscribers/RViz must also be best_effort or they will silently receive nothing.
 # (Left as source QoS here; documented in README.)

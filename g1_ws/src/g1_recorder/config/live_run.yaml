@@ -1,0 +1,29 @@
+# Canonical sensor inputs + observed/high-level ROS interfaces and common Nav2
+# outputs. Only publishing topics are recorded; inspect bag info after a run.
+# Add project-specific POI/hand-off and Loco topics when their contracts are frozen.
+topics:
+  - /camera/color/image_raw
+  - /camera/aligned_depth_to_color/image_raw
+  - /camera/color/camera_info
+  - /utlidar/cloud_livox_mid360
+  - /utlidar/imu_livox_mid360
+  - /dog_odom
+  - /dog_imu_raw
+  - /lowstate
+  - /secondary_imu
+  - /lf/bmsstate
+  - /tf
+  - /tf_static
+  - /cmd_vel
+  - /api/sport/request
+  - /api/sport/response
+  - /wirelesscontroller
+  - /scan
+  - /map
+  - /goal_pose
+  - /initialpose
+  - /plan
+  - /navigate_to_pose/_action/feedback
+  - /navigate_to_pose/_action/status
+  - /rosout
+  - /diagnostics
