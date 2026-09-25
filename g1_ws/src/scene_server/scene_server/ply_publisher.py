@@ -1,8 +1,8 @@
 """STUB scene publisher (owned by D).
 
-Publishes a synthetic colored point cloud on /vggt/scene_cloud in the `vggt_world` frame and a
-static `map -> vggt_world` transform, so RViz + the M3 topic/frame contract exist before the real
-metric reconstruction is ready. The real scene_server must keep the same topic name and frame.
+Publishes a synthetic colored point cloud on /scene_cloud in the `map` frame, so RViz + the M3
+topic/frame contract exist before the real metric map is ready. The real scene_server must keep
+the same topic name and frame.
 
 No open3d/plyfile dependency: the cloud is generated with numpy (a gray floor plane + a colored
 box). If a real .ply path is passed via the `ply_path` parameter later, load that instead.
@@ -11,13 +11,11 @@ import struct
 
 import numpy as np
 import rclpy
-from geometry_msgs.msg import TransformStamped
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import PointCloud2, PointField
 from sensor_msgs_py import point_cloud2
 from std_msgs.msg import Header
-from tf2_ros import StaticTransformBroadcaster
 
 
 def _pack_rgb(r, g, b):
@@ -55,17 +53,15 @@ def _make_synthetic_cloud():
 class PlyPublisher(Node):
     def __init__(self):
         super().__init__("scene_server_stub")
-        self.declare_parameter("frame_id", "vggt_world")
-        self.declare_parameter("parent_frame", "map")
+        self.declare_parameter("frame_id", "map")
         self.declare_parameter("rate_hz", 1.0)
         self.frame_id = self.get_parameter("frame_id").value
-        self.parent_frame = self.get_parameter("parent_frame").value
 
         # Latch the cloud so RViz opened after startup still receives it.
         qos = QoSProfile(depth=1)
         qos.reliability = ReliabilityPolicy.RELIABLE
         qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
-        self.pub = self.create_publisher(PointCloud2, "/vggt/scene_cloud", qos)
+        self.pub = self.create_publisher(PointCloud2, "/scene_cloud", qos)
 
         self.fields = [
             PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
@@ -78,20 +74,8 @@ class PlyPublisher(Node):
             f"Synthetic scene: {len(self.points)} points in frame '{self.frame_id}'"
         )
 
-        # Static identity map -> vggt_world so RViz has a full TF tree.
-        self.static_tf = StaticTransformBroadcaster(self)
-        self._publish_static_tf()
-
         rate = float(self.get_parameter("rate_hz").value)
         self.timer = self.create_timer(1.0 / max(rate, 0.1), self._publish_cloud)
-
-    def _publish_static_tf(self):
-        t = TransformStamped()
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = self.parent_frame
-        t.child_frame_id = self.frame_id
-        t.transform.rotation.w = 1.0
-        self.static_tf.sendTransform(t)
 
     def _publish_cloud(self):
         header = Header()

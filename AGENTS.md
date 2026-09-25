@@ -1364,11 +1364,8 @@ If an implementation choice conflicts with this file, stop and surface the confl
 - **VGGT compute is swappable and NOT pinned:** candidates = G1 built-in **Jetson Orin**, a
   separate **8 GB Jetson**, or **cloud GPU**. BF16 where supported. Get it running reliably first,
   optimize placement later.
-- **VGGT submodules:** model code in `third_party/vggt` (facebookresearch/vggt), weights in
-  `VGGT-1B` (facebook/VGGT-1B, Git LFS, ~10 GB, CC-BY-NC-4.0). On machines that do not run VGGT
-  (incl. the Iris Xe dev laptop) **never fetch the LFS weights**: init submodules with
-  `GIT_LFS_SKIP_SMUDGE=1` and set `lfs.fetchexclude '*'` in `VGGT-1B` (see README). On a VGGT
-  machine fetch only `model.safetensors`.
+- **VGGT is not vendored:** the `third_party/vggt` and `VGGT-1B` submodules were removed. If the
+  optional VGGT branch is pursued, add the model code and weights on the machine that runs it.
 
 ### Mapping architecture update 2 — LiDAR-inertial (2026-09-25, evening)
 
@@ -1457,7 +1454,7 @@ Built and **offline-verified** in `g1_ws/src/` (dev distro; portable to Humble):
   Remaining: **R4** verify real topic names/QoS on robot, **R5** canonical capture + publish shared bag.
 - **Bags:** mcap, no compression. This rosbag2 build accepts topics as positional arguments
   (`--topics` is rejected). `/tf_static` transient_local override confirmed required and working.
-- **`scene_server` is a placeholder owned by D** — adapt it to expose canonical RTAB-Map-backed metric scene/map outputs. Keep `/vggt/scene_cloud` + `vggt_world` only for the optional VGGT branch.
+- **`scene_server` is a placeholder owned by D** — adapt it to expose canonical RTAB-Map-backed metric scene/map outputs. The stub publishes `/scene_cloud` in `map`; `/vggt/*` is reserved for the optional VGGT branch (§11).
 
 #### FROZEN keyframe struct — offline / semantic / optional-VGGT contract
 `keyframe_manager` writes this stable offline fixture. Semantic-query and optional VGGT code may read it; RTAB-Map primary mapping does not depend on it:

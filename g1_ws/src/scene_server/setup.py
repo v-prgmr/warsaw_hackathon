@@ -14,7 +14,7 @@ setup(
     zip_safe=True,
     maintainer="inko",
     maintainer_email="inko.inkreate@gmail.com",
-    description="STUB viz: synthetic /vggt/scene_cloud in vggt_world for the M3 surface.",
+    description="STUB viz: synthetic /scene_cloud in map for the M3 surface.",
     license="BSD-3-Clause",
     entry_points={
         "console_scripts": [

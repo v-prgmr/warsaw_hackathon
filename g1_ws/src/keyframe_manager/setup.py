@@ -19,7 +19,7 @@ setup(
     zip_safe=True,
     maintainer="inko",
     maintainer_email="inko.inkreate@gmail.com",
-    description="Selects and exports RGB-D keyframes for VGGT reconstruction.",
+    description="Selects and exports RGB-D keyframes for semantic queries and offline fixtures.",
     license="BSD-3-Clause",
     entry_points={
         "console_scripts": [

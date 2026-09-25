@@ -7,7 +7,7 @@ ROS 2 packages for the G1 capture → keyframe → visualize path (Module 1/2 + 
 | `g1_recorder` | ament_cmake | MCAP `rtab`, canonical `survey`, and audited `live_run` recording profiles + discovery |
 | `g1_mapping` | ament_python | RTAB-Map LiDAR-inertial mapping (MID-360 + IMU, optional RGB-D color); see its README |
 | `keyframe_manager` | ament_python | select ~8–20 RGB-D keyframes → frozen keyframe struct + manifest |
-| `scene_server` | ament_python | **STUB (owned by D)** — synthetic `/vggt/scene_cloud` in `vggt_world` for the RViz surface |
+| `scene_server` | ament_python | **STUB (owned by D)** — synthetic `/scene_cloud` in `map` for the RViz surface |
 
 ## Build
 ```bash
@@ -24,7 +24,7 @@ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 ```bash
 # record→replay + tf_static QoS
 ros2 run demo_nodes_cpp talker &
-ros2 run tf2_ros static_transform_publisher --frame-id map --child-frame-id vggt_world &
+ros2 run tf2_ros static_transform_publisher --frame-id map --child-frame-id odom &
 ros2 launch g1_recorder record.launch.py profile:=survey  # Ctrl-C to stop -> g1_survey_<ts>/
 ros2 bag info g1_survey_* && ros2 bag play g1_survey_*
 
