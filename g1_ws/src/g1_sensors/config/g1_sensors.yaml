@@ -4,12 +4,17 @@
 # g1_mapping; launch g1_mapping with static_tf:=false while this runs.
 
 topics:
-  lowstate: /lowstate                   # 1 kHz live; survey bags record /lf/lowstate (20 Hz)
-  clock_reference: /dog_imu_raw         # robot-stamped topic used to stamp joint states on the robot clock
+  # 20 Hz copy of /lowstate, as fresh as the 1 kHz stream (tick lag 0-1 ms, measured live) and the
+  # one survey bags record, so live and replay behave the same. /lowstate (1 kHz) works too, but
+  # costs ~70 % of a CPU core in this Python node.
+  lowstate: /lf/lowstate
+  # Robot-stamped topic used to put joint states on the robot clock: the LiDAR IMU (200 Hz; its
+  # stamps match /dog_imu_raw's within 1 ms). /dog_imu_raw (1 kHz) also works, at more CPU.
+  clock_reference: /utlidar/imu_livox_mid360
   joint_states: /joint_states
 
 bridge:
-  publish_rate: 50.0                    # Hz, /joint_states and /tf rate (0 = every /lowstate message)
+  publish_rate: 50.0                    # Hz cap on /joint_states and /tf (0 = every lowstate message)
   stamp_source: robot_clock             # robot_clock | receive
   clock_window: 2.0                     # s, window for the robot-clock offset estimate
 

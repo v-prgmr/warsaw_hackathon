@@ -1,9 +1,9 @@
 # g1_sensors — the G1's `/tf` chain (AGENTS.md §10.1)
 
-The robot publishes no `/tf`. This package produces it on the host from `/lowstate`:
+The robot publishes no `/tf`. This package produces it on the host from `/lf/lowstate`:
 
 ```text
-/lowstate ──► lowstate_to_joint_states ──► /joint_states ──► robot_state_publisher (G1 29-DoF rev 1.0 URDF)
+/lf/lowstate ─► lowstate_to_joint_states ─► /joint_states ─► robot_state_publisher (G1 29-DoF rev 1.0 URDF)
                 (stamped on the robot clock)                          │
                                                                       ▼
 robot_center ─► pelvis ─► waist yaw/roll/pitch ─► torso_link ─► mid360_link ─► livox_frame
@@ -12,7 +12,7 @@ robot_center ─► pelvis ─► waist yaw/roll/pitch ─► torso_link ─► 
 ```
 
 `odom -> robot_center` comes from `g1_mapping` (launch it with `static_tf:=false`). Read-only
-towards the robot: it subscribes to `/lowstate` and `/dog_imu_raw` and publishes `/joint_states`,
+towards the robot: it subscribes to `/lf/lowstate` and the LiDAR IMU and publishes `/joint_states`,
 `/tf`, `/tf_static`, `/robot_description`.
 
 ## Run
@@ -28,7 +28,7 @@ Run it during every capture so `/tf`, `/tf_static` and `/joint_states` land in t
 recorded without it (replay only in the `SIM=1` container, domain 77):
 
 ```bash
-ros2 launch g1_sensors tf_chain.launch.py use_sim_time:=true lowstate_topic:=/lf/lowstate
+ros2 launch g1_sensors tf_chain.launch.py use_sim_time:=true
 ros2 launch g1_mapping mapping.launch.py use_sim_time:=true static_tf:=false
 ros2 bag play <bag> --clock 200
 ```
@@ -45,12 +45,13 @@ Topic names, the joint order, and the glue frames live in `config/g1_sensors.yam
 - **Joint order:** `LowState.motor_state[0..28]` = the URDF's revolute joints in file order
   (unitree_sdk2 `G1JointIndex`, waist yaw = 12).
 - **Stamps:** `LowState` has no header. Joint states are stamped on the **robot clock**: receive
-  time + the median of (`/dog_imu_raw` header stamp − receive time) over 2 s. `/tf` therefore
+  time + the median of (LiDAR IMU header stamp − receive time) over 2 s. `/tf` therefore
   lines up with LiDAR and IMU stamps even though the laptop clock is ~73 s ahead. In replay the
   estimate is only as fine as `/clock`, so play with `--clock 200`.
-- **Rate:** `/joint_states` and the moving TFs at 50 Hz live; 20 Hz on survey bags
-  (`/lf/lowstate`). The sensors are on the torso, so only the three waist joints move them.
-- **No Unitree SDK in the process** (AGENTS.md §5): `/lowstate` is read with the `unitree_hg`
+- **Rate:** 20 Hz from `/lf/lowstate`, live and on survey bags. Measured live: it is as fresh as
+  the 1 kHz `/lowstate` (tick lag 0–1 ms). Reading the 1 kHz streams in this Python node cost ~70 %
+  of a CPU core. The sensors are on the torso, so only the three waist joints move them.
+- **No Unitree SDK in the process** (AGENTS.md §5): `LowState` is read with the `unitree_hg`
   ROS 2 messages over the normal ROS 2 graph.
 
 ## Checks on `bags/probe_standing_live` (robot standing, 2026-09-25)
