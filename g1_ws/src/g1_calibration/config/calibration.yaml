@@ -1,0 +1,62 @@
+# g1_calibration configuration (plain YAML, read by the capture launch file and the calibrate_*
+# tools). Topic / frame names marked VERIFY are driver defaults, not yet seen on the robot
+# (AGENTS.md §24): check them with `ros2 topic list` / `ros2 run tf2_tools view_frames`.
+
+board:
+  cols: 8          # inner corners along the board x axis (long side)
+  rows: 5          # inner corners along y. cols + rows MUST be odd (unambiguous corner order)
+  square: 0.080    # m. MEASURE the printed squares (calipers, over several squares) and edit
+  border: 0.03     # m of white margin around the squares on the rigid board (LiDAR extent)
+
+# Cameras in the dataset. `oak` is the camera being calibrated, `realsense` the reference: its
+# pose comes from the G1 URDF (g1_sensors tf_chain) + the realsense-ros driver's /tf_static.
+cameras:
+  oak:
+    image: /oak/rgb/image_raw              # VERIFY (depthai-ros default)
+    camera_info: /oak/rgb/camera_info      # VERIFY
+  realsense:
+    image: /camera/color/image_raw
+    camera_info: /camera/color/camera_info
+
+lidar:
+  topic: /utlidar/cloud_livox_mid360
+  frame: livox_frame
+  seconds: 3.0     # scans accumulated per sample while robot + board stand still
+  range_min: 0.3   # m; also drops the (0,0,0) placeholders and head self-hits
+  range_max: 6.0
+
+frames:
+  body: torso_link                   # rigid with the LiDAR, the RealSense and the chest OAK
+  oak_root: oak-d-base-frame         # VERIFY: root of the depthai-ros TF tree. The result is a
+                                     # static transform body -> oak_root for g1_sensors.yaml
+
+# Used only when the capture had no /tf for them (g1_sensors tf_chain or the RealSense driver
+# not running). From the G1 29-DoF rev 1.0 URDF: torso_link -> mid360_link (livox_frame is
+# identity to it). The RealSense value ignores the color sensor's ~1.5 cm offset inside the
+# camera, so the RealSense path is then only approximate.
+fallback_transforms:
+  body_to_lidar: {xyz: [0.0002835, 0.00003, 0.428434], rpy: [3.141592653589793, 0.05112069379091391, 0.0]}
+  body_to_realsense_optical: null    # e.g. d435_joint + optical rotation; null = RealSense path needs /tf
+
+# Rough OAK mount, only needed when the RealSense path is unavailable (it seeds the LiDAR board
+# search). Tape-measure torso_link -> OAK in a camera "body" convention (x forward, z up):
+# roughly on the chest, looking forward and slightly down (positive pitch = down).
+initial_guess:
+  body_to_oak_body: {xyz: [0.10, 0.0, 0.25], rpy: [0.0, 0.26, 0.0]}
+
+extrinsics:
+  final: auto                  # auto | lidar_planes | via_realsense
+  max_reprojection_px: 1.0     # drop board detections with a worse PnP fit
+  lidar_search:                # board search around the predicted pose, coarse -> fine
+    - {margin: 0.30, depth_margin: 0.30}
+    - {margin: 0.10, depth_margin: 0.10}
+    - {margin: 0.05, depth_margin: 0.06}
+  plane_threshold: 0.03        # m, RANSAC inlier distance (MID-360 range noise ~2 cm)
+  min_board_points: 40
+
+# Quality gates reported in results/report.md
+quality:
+  reprojection_px: 0.5         # RMS, per camera
+  lidar_plane_rms_m: 0.025
+  methods_agree_m: 0.02        # lidar_planes vs via_realsense
+  methods_agree_deg: 1.0

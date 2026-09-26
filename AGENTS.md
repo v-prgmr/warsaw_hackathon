@@ -303,7 +303,7 @@ The head RealSense points at the floor, so a **chest-mounted OAK-D** is the sema
 - Publish RGB + depth **aligned to RGB at the same resolution** + CameraInfo, like the RealSense profile.
 - If the OAK-D is plugged into the laptop rather than the Orin, its stamps come from a different clock than the robot's streams (see the clock note in the addendum).
 - Mounting follows §25.2: ≤ 1 kg of extra hardware in total, on the torso or head, velcro / zip ties / manufacturer holes, no traces on removal, and it must not cover the LiDAR, cameras, vents, or indicators.
-- Its extrinsic is a **measured** static transform `torso_link -> <oak frame>`, checked in RViz (§10.1). No calibration.
+- Its extrinsic is **calibrated with a chessboard** (`g1_calibration`, §10.4) against the head RealSense and the MID-360, and published as the static transform `torso_link -> <OAK root frame>` by `g1_sensors`. A tape-measured mount is only the calibration's starting guess.
 - RGB keyframes for POI queries are captured **while the robot is standing still** (settled); walking shakes the chest camera too.
 
 ## RealSense (head)
@@ -488,7 +488,7 @@ robot_center
 pelvis → waist joints → torso_link
   ├── mid360_link → livox_frame
   ├── d435_link   → camera_link → camera_color_optical_frame
-  └── <OAK-D mount> → OAK-D driver frames          (measured, static)
+  └── <OAK-D root frame> → OAK-D driver frames     (calibrated, static: g1_calibration §10.4)
 ```
 
 **Extrinsics come from the G1 URDF** (`unitree_ros/robots/g1_description`: `d435_joint`, `mid360_joint` on `torso_link`), published on `/tf` by `robot_state_publisher` from `joint_states`. The waist joints move the head relative to the pelvis, so joint states are required.
@@ -502,7 +502,7 @@ pelvis → waist joints → torso_link
 
 Run 1–3 during captures so `/tf` lands in the bag; on bags without `/tf`, run them on the replayed `/lf/lowstate`. Launch `g1_mapping` with `static_tf:=false` while they run.
 
-**No calibration.** Verify only with an RViz sanity check:
+**No calibration for the URDF sensors** (MID-360, RealSense, IMUs): verify only with an RViz sanity check. The chest OAK-D is not in the URDF and is calibrated (§10.4). RViz check:
 
 - the floor is horizontal and at the same height in the LiDAR cloud and in the OAK-D depth cloud
 - LiDAR and depth clouds overlap on the floor and walls
@@ -514,7 +514,7 @@ Frame-convention glue that is not in the URDF must be an explicit, documented st
 - `d435_link -> camera_link`: identity, the realsense-ros root frame; unverified until the RealSense runs
 - `robot_center -> pelvis`: identity. Pelvis height 0.77 m (LiDAR) / 0.79 m (URDF feet) vs `/dog_odom` z 0.74 m
 - `imu_in_pelvis -> dog_imu_link`: identity. The pelvis IMU's gravity is ~1.5° off the torso-side sensors through the waist joints (waist encoder zero or IMU mounting; unresolved). With `/dog_imu_raw` as the gravity reference the map tilts by that much; `g1_mapping imu_source:=livox` avoids it
-- `torso_link -> <OAK-D mount>`: measured by hand at mounting time; write the numbers down
+- `torso_link -> <OAK-D root frame>`: from `g1_calibration` (§10.4), pasted into `g1_sensors.yaml` with its date and dataset. Re-calibrate whenever the mount is touched
 
 Never pass XYZ coordinates without a `frame_id`.
 
@@ -529,6 +529,26 @@ Compare them against the RTAB-Map map. The milestone requires numerical agreemen
 ## 10.3 OAK-D depth ↔ LiDAR consistency
 
 The OAK-D depth is an independent range sensor. Overlay the depth cloud on the LiDAR map and check the point-to-plane distance on the floor and walls. This validates the camera extrinsic that POI back-projection depends on.
+
+## 10.4 OAK-D chessboard calibration (`g1_calibration`)
+
+Decided 2026-09-26 (team request): the chest OAK-D is calibrated with a printed chessboard, using the head RealSense (URDF-mounted) as the reference camera. Procedure, board and commands: `g1_ws/src/g1_calibration/README.md`.
+
+```text
+intrinsics        OAK images -> calibrateCamera; compared with the factory (EEPROM) intrinsics
+OAK <-> RealSense  same board in both cameras -> stereoCalibrate (intrinsics fixed) -> T_realsense_oak
+OAK <-> LiDAR (A)  T_lidar_realsense (URDF /tf) · T_realsense_oak
+OAK <-> LiDAR (B)  OAK board plane (PnP) = board points in 3 s of accumulated MID-360 scans, >= 3 tilted
+                   poses (Zhang & Pless 2004; Unnikrishnan & Hebert 2005), closed form + Gauss-Newton
+result             torso_link -> <OAK root frame> for g1_sensors.yaml static_transforms
+```
+
+- A and B are independent (A trusts the URDF's RealSense mount, B only the LiDAR); their agreement is the check. `final: auto` uses B when its plane RMS passes (it ties the OAK to the sensor that builds the map), else A.
+- Quality gates (`config/calibration.yaml`): reprojection < 0.5 px, LiDAR plane RMS < 2.5 cm, A vs B within 2 cm / 1°. Look at `results/overlay_*.png`, then do the §10.3 overlay in RViz.
+- Keep the **factory intrinsics** unless `calibrate_intrinsics` shows they are clearly worse: the OAK's on-device depth-to-RGB alignment uses the EEPROM calibration.
+- Robot standing, built-in mode, no actuation (§25). 15–25 samples, board and robot still, board held low (the RealSense looks ~48° down), free-standing (no wall behind), tilted up/down and left/right.
+- Board: `cols + rows` inner corners must be odd (unambiguous corner order); measure the printed squares.
+- Verified on synthetic data only so far (tests, §26): both paths recover the true extrinsic within 1 cm / 0.3° (0.5° with 2 cm LiDAR noise). Not yet run on the robot; OAK topics and root frame still to verify.
 
 ---
 
@@ -828,7 +848,8 @@ The LiDAR builds the map, so it is **no longer an independent check**. M2 theref
 
 Acceptance criteria:
 
-- extrinsics come from the G1 URDF via `/tf` + `joint_states` (waist joints); no calibration
+- extrinsics come from the G1 URDF via `/tf` + `joint_states` (waist joints); no calibration for the URDF sensors
+- the chest OAK-D is calibrated with `g1_calibration` and passes its quality gates (§10.4)
 - RViz sanity check passes (§10.1): level floor in both LiDAR and depth, overlapping clouds, camera frustum matches the image
 - **2–3 tape-measured dimensions**, written down at recording time, agree with the map within the agreed tolerance (§10.2)
 - the OAK-D depth cloud overlays the LiDAR map (§10.3)
@@ -946,6 +967,7 @@ Preferred project split:
 g1_sensors
 g1_recorder
 g1_mapping / rtabmap_bringup
+g1_calibration        # chest OAK-D chessboard calibration (§10.4)
 scene_server
 semantic_query
 ```
@@ -998,6 +1020,7 @@ Recommended execution sequence:
 9. Verify one-session map, loop closures, level floor, 2D occupancy grid
 10. RViz TF sanity check + compare the tape measurements with the map
 11. Expose /map + map->odom + scene outputs in RViz
+11b. Calibrate the chest OAK-D with g1_calibration (chessboard; §10.4) -> torso_link -> OAK in g1_sensors.yaml
 12. Add Grounding DINO + SAM2 -> metric POI (keyframes captured while standing)
 13. Integrate Nav2 on the RTAB-Map /map
 14. Integrate safe G1 locomotion executor
@@ -1302,7 +1325,7 @@ Consequences:
 - `g1_mapping` (`g1_ws/src/g1_mapping`) is the mapping package. Default odometry is `icp_odometry` + IMU; `/dog_odom` is a switchable fallback (§8).
 - POI RGB keyframes are captured while the robot stands still.
 - M2 needs tape-measured dimensions written down at recording time, because the LiDAR is no longer an independent check (§10.2).
-- Extrinsics come from the G1 URDF via `/tf` + `joint_states`. Verification is an RViz sanity check only, with no calibration (§10.1). Until bags contain `/tf`, `g1_mapping` ships **estimated** static transforms (ground-plane fits on depth / LiDAR, cross-checked against the URDF) for replaying legacy bags; they are not a calibration.
+- Extrinsics come from the G1 URDF via `/tf` + `joint_states`. Verification is an RViz sanity check only, with no calibration (§10.1); the chest OAK-D (not in the URDF) is calibrated with `g1_calibration` (§10.4, decided 2026-09-26). Until bags contain `/tf`, `g1_mapping` ships **estimated** static transforms (ground-plane fits on depth / LiDAR, cross-checked against the URDF) for replaying legacy bags; they are not a calibration.
 - Exploration (M5) uses m-explore for ROS 2 (`explore_lite`) on top of Nav2 and the RTAB-Map `/map` (§15).
 - 2D grid: `Grid/MaxGroundHeight` set and the IMU fed to the `rtabmap` node. On `full_survey_take_01`, table-height cells went from 69 occupied / 357 free to 245 / 10.
 - The recording laptop's clock was ~72 s ahead of the robot's clock (`full_survey_take_01`). Replay is unaffected (header stamps), but live Nav2 / TF timeouts need aligned clocks: fix it on the laptop side only (§25.2 forbids robot network/OS changes) or run the stack on the Orin.
@@ -1317,7 +1340,7 @@ Consequences:
 ### Day-1 task assignment (updated critical path A→B→C→D; semantic work in parallel)
 | Owner | Package(s) | Milestone | Offline-capable |
 |-------|-----------|-----------|-----------------|
-| A | `g1_sensors`: `/lowstate` → `/joint_states` bridge, `robot_state_publisher` (G1 URDF), static glue frames incl. the OAK-D mount (built; OAK-D mount still to add) | M0 | yes from `/lf/lowstate` bags |
+| A | `g1_sensors`: `/lowstate` → `/joint_states` bridge, `robot_state_publisher` (G1 URDF), static glue frames incl. the OAK-D mount (built; OAK-D transform from `g1_calibration`, §10.4, still to run on the robot) | M0 | yes from `/lf/lowstate` bags |
 | B | `g1_recorder` + existing `keyframe_manager` | M0 | yes after canonical bag |
 | C | `g1_mapping` (RTAB-Map LiDAR-inertial) bringup + tuning | M1→M3 | yes (from bag) |
 | D | URDF TF chain + physical-measurement validation + `scene_server` canonical outputs | M2→M3 | yes (from bag/map DB) |
@@ -1467,10 +1490,10 @@ SIM=1 scripts/run_humble.sh scripts/run_tests.sh --integration   # + end-to-end 
 
 | Suite | Where | What it checks |
 |---|---|---|
-| unit | `g1_ws/src/<pkg>/test/` | `livox_cloud_fix` (ns→s, zero / range filter, layouts), `livox_imu_fix`, `odom_to_tf`, every `mapping.launch.py` option combination (one `odom -> base` owner, every consumed cloud / IMU topic has a producer), URDF + glue frames form one tree with the observed mounts, `/lowstate` bridge (robot-clock stamps, rate, time jumps), `keyframe_manager` selection rules + the frozen keyframe struct, `scene_server` stub |
+| unit | `g1_ws/src/<pkg>/test/` | `livox_cloud_fix` (ns→s, zero / range filter, layouts), `livox_imu_fix`, `odom_to_tf`, every `mapping.launch.py` option combination (one `odom -> base` owner, every consumed cloud / IMU topic has a producer), URDF + glue frames form one tree with the observed mounts, `/lowstate` bridge (robot-clock stamps, rate, time jumps), `keyframe_manager` selection rules + the frozen keyframe struct, `scene_server` stub, `g1_calibration` (geometry conventions, canonical chessboard corner order under any in-plane rotation, PnP, LiDAR board extraction, all solvers, the full capture → calibrate pipeline on a synthetic G1 rig, the live capture node) |
 | contract | `g1_ws/tests/test_contracts.py` | recording profiles vs the §7 mandatory list, topic names shared across packages, the `ros2 bag record` command, **docs sync**: every package is named in this file and both READMEs, every launch argument is in its package README |
 | integration | `g1_ws/tests/test_integration.py` | the real launch files on a simulated G1 (`g1_ws/tests/sim_g1.py`: ray-cast room, MID-360 format with ns time and zero points, upside-down mount, both IMUs, `LowState`, robot clock 73 s behind the host): ICP odometry with `imu_source` dog / livox (drift < 3 % of the distance, 0 lost scans, `/map` with free + occupied cells), the `dog_odom` fallback, and `g1_sensors tf_chain` + `g1_mapping static_tf:=false` (joint states on the robot clock, upside-down `livox_frame`) |
 
 The simulator cannot replace a real bag: it checks plumbing, formats, frames and timing, not tuning on real data.
 
-Status (2026-09-26): 121 unit/contract tests + 4 integration tests pass (ROS 2 Humble; RTAB-Map from `introlab3it/rtabmap_ros:humble-latest`). Fixed on the way: `keyframe_manager` wrapped float depth > 65.5 m into garbage uint16, hardcoded `odom_pose.frame`, and rejected every frame after a bag restart; the `/lowstate` bridge's rate limiter published at about half rate with irregular input; `live_run` did not record `/joint_states` and `/odom`; `g1_mapping` now warns that `static_tf:=true` must not run together with `g1_sensors`.
+Status (2026-09-26): 180 unit/contract tests + 4 integration tests pass (ROS 2 Humble; RTAB-Map from `introlab3it/rtabmap_ros:humble-latest`). Fixed on the way: `keyframe_manager` wrapped float depth > 65.5 m into garbage uint16, hardcoded `odom_pose.frame`, and rejected every frame after a bag restart; the `/lowstate` bridge's rate limiter published at about half rate with irregular input; `live_run` did not record `/joint_states` and `/odom`; `g1_mapping` now warns that `static_tf:=true` must not run together with `g1_sensors`.

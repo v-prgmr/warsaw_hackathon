@@ -63,5 +63,6 @@ static_transforms:
   # realsense-ros root frame (x forward, z up, like d435_link). UNVERIFIED: check in RViz when the
   # RealSense runs (its driver publishes camera_link -> optical frames on /tf_static).
   - {parent: d435_link, child: camera_link, xyz: [0.0, 0.0, 0.0], rpy: [0.0, 0.0, 0.0]}
-  # OAK-D chest camera: MEASURE at mounting time (tape, relative to torso_link) and add, e.g.
+  # OAK-D chest camera: CALIBRATE with g1_calibration (AGENTS.md §10.4) and paste the line from
+  # its results/report.md here, with the date and dataset, e.g.
   # - {parent: torso_link, child: oak-d-base-frame, xyz: [x, y, z], rpy: [r, p, y]}

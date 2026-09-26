@@ -19,6 +19,8 @@ git submodule update --init --recursive
 ## Packages — [`g1_ws/`](g1_ws/README.md)
 
 ROS 2 packages: `g1_recorder` (bag profiles), `g1_sensors` (the robot's `/tf` chain),
-`g1_mapping` (RTAB-Map LiDAR-inertial mapping), `keyframe_manager`, `scene_server` (stub).
+`g1_mapping` (RTAB-Map LiDAR-inertial mapping), `g1_calibration` (chest OAK-D chessboard
+calibration), `keyframe_manager`, `scene_server` (stub). Tests: `SIM=1 scripts/run_humble.sh
+scripts/run_tests.sh` (AGENTS.md §26).
 Build with `colcon build` in `g1_ws/`. Offline tests need no robot; to record from the robot
 see **"Testing from the computer connected to the robot"** in [`g1_ws/README.md`](g1_ws/README.md).

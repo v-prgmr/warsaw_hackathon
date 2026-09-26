@@ -81,7 +81,8 @@ Topic names, the joint order, and the glue frames live in `config/g1_sensors.yam
 ## Open
 
 - `d435_link -> camera_link` identity is unverified: check in RViz when the RealSense runs.
-- OAK-D: measure its mount relative to `torso_link` and add it to `static_transforms`.
+- OAK-D: calibrate it with `g1_calibration` (AGENTS.md §10.4) and add the resulting
+  `torso_link -> <OAK root frame>` line to `static_transforms`.
 - The ~1.5° pelvis-IMU disagreement tilts the map by that much when `/dog_imu_raw` is the
   gravity reference; `imu_source:=livox` avoids it (its IMU is rigid with the LiDAR). Decide
   with `compare_imu_sources` on a walking bag.

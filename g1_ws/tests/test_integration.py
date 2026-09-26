@@ -23,7 +23,6 @@ from rtabmap_msgs.msg import OdomInfo  # noqa: E402
 from sensor_msgs.msg import JointState  # noqa: E402
 import tf2_ros  # noqa: E402
 
-pytestmark = pytest.mark.integration
 SIM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sim_g1.py")
 DURATION = 30.0
 
