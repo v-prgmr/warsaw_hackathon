@@ -85,6 +85,10 @@ rtabmap_parameters:
   Grid/Sensor: "0"                         # 2D grid from the LiDAR only (RGB-D is for color)
   Grid/RangeMax: "8"
   Grid/CellSize: "0.05"
+  Grid/RayTracing: "true"                  # clear free space along LiDAR rays so transient/dynamic
+                                           # obstacles (e.g. a person walking past) don't stay baked
+                                           # into a node's local grid; re-observing the spot clears it
+
   Grid/MaxObstacleHeight: "1.0"            # relative to robot_center (~1.7 m above the floor)
   # Normals-only ground segmentation classifies ANY horizontal surface as ground, so tables came
   # out as free space. Horizontal points above this height (relative to robot_center, which is
