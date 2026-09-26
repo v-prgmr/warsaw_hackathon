@@ -14,6 +14,8 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Imu
 
+from g1_mapping.lifetime import exit_with_parent
+
 
 class LivoxImuFix(Node):
     def __init__(self):
@@ -32,6 +34,7 @@ class LivoxImuFix(Node):
 
 
 def main():
+    exit_with_parent()
     rclpy.init()
     try:
         rclpy.spin(LivoxImuFix())

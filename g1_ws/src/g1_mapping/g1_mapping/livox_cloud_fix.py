@@ -21,6 +21,8 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
 from sensor_msgs.msg import PointCloud2, PointField
 
+from g1_mapping.lifetime import exit_with_parent
+
 _NP_TYPE = {
     PointField.INT8: "i1", PointField.UINT8: "u1", PointField.INT16: "<i2",
     PointField.UINT16: "<u2", PointField.INT32: "<i4", PointField.UINT32: "<u4",
@@ -100,6 +102,7 @@ class LivoxCloudFix(Node):
 
 
 def main():
+    exit_with_parent()
     rclpy.init()
     try:
         rclpy.spin(LivoxCloudFix())

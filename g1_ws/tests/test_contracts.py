@@ -83,7 +83,9 @@ def test_camera_topics_agree_between_packages():
 def test_sensor_topics_agree_between_packages():
     mapping = load_yaml("g1_mapping", "config", "g1_mapping.yaml")["topics"]
     sensors = load_yaml("g1_sensors", "config", "g1_sensors.yaml")["topics"]
-    assert sensors["clock_reference"] == mapping["imu"]
+    # the robot-clock reference must be a robot-stamped IMU that g1_mapping also knows
+    assert sensors["clock_reference"] in (mapping["imu"], mapping["imu_livox"])
+    assert sensors["lowstate"] in profile("survey")
 
 
 def test_tf_static_is_recorded_transient_local():

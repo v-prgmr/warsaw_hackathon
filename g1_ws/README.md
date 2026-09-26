@@ -104,3 +104,33 @@ ros2 bag play survey_take --clock             # in another terminal, run keyfram
 Publish that bag as the team's shared fixture.
 
 See `g1_recorder/README.md` for the full command reference and the frozen keyframe struct.
+
+### 5. Sync the laptop clock to the robot (before live Nav2 / m-explore runs)
+
+All sensor topics come from Unitree's locomotion computer `192.168.123.161` and carry its clock,
+which ran 76.5 s behind the laptop (2026-09-26). RTAB-Map and replay cope; Nav2 and m-explore
+compare TF ages with the laptop clock and stop working. `.161` already runs an NTP server, so the
+laptop can follow it; nothing changes on the robot (AGENTS.md §7, Clock; pending x-kom's OK):
+
+```bash
+sudo mkdir -p /etc/systemd/timesyncd.conf.d
+printf '[Time]\nNTP=192.168.123.161\nFallbackNTP=\n' | sudo tee /etc/systemd/timesyncd.conf.d/g1-robot.conf
+sudo systemctl restart systemd-timesyncd
+timedatectl timesync-status          # Server: 192.168.123.161; the first sync steps the clock
+```
+
+Undo after the event: `sudo rm /etc/systemd/timesyncd.conf.d/g1-robot.conf && sudo systemctl
+restart systemd-timesyncd`. Docker containers follow the host clock.
+
+### 6. End every live session cleanly
+
+Nothing of ours may keep publishing onto the robot's network after a session (AGENTS.md §19):
+
+```bash
+bash /ws/scripts/stop_ros.sh      # inside the container: Ctrl-C to every ROS process, then escalate
+scripts/stop_humble.sh            # on the host: the same in every g1-humble container, then docker stop
+```
+
+Never `kill -9` a `ros2 launch`: its nodes are orphaned and keep running. `kill -INT` on a launch
+started with `&` from a script does nothing (bash starts background jobs with SIGINT ignored).
+Our Python nodes also exit on their own when their launch process dies.

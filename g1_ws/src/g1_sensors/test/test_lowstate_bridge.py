@@ -2,6 +2,7 @@
 import pytest
 import rclpy
 from rclpy.parameter import Parameter
+from rclpy.serialization import serialize_message
 from sensor_msgs.msg import Imu
 
 unitree_hg = pytest.importorskip("unitree_hg.msg")
@@ -56,18 +57,19 @@ def build(ros, **params):
 
 
 def lowstate(q0=0.0):
+    """Raw CDR bytes, as the node receives them (raw subscription)."""
     msg = unitree_hg.LowState()
     for i in range(29):
         msg.motor_state[i].q = q0 + i * 0.01
         msg.motor_state[i].dq = -i * 0.1
         msg.motor_state[i].tau_est = i * 1.0
-    return msg
+    return serialize_message(msg)
 
 
 def imu(stamp_ns):
     m = Imu()
     m.header.stamp.sec, m.header.stamp.nanosec = divmod(stamp_ns, S)
-    return m
+    return serialize_message(m)
 
 
 def test_waits_for_robot_clock_then_stamps_on_it(ros):

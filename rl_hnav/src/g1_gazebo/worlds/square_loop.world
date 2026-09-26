@@ -1,0 +1,86 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <world name="square_loop">
+    <!-- MuJoCo starts the G1 near (0, 0). Keep that point in the open corridor. -->
+    <gravity>0 0 -9.8</gravity>
+    <physics type="ode">
+      <real_time_update_rate>1000</real_time_update_rate>
+      <max_step_size>0.001</max_step_size>
+    </physics>
+
+    <light name="sun" type="directional">
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="floor">
+      <static>true</static>
+      <link name="floor">
+        <collision name="floor_collision">
+          <geometry><plane><normal>0 0 1</normal><size>30 30</size></plane></geometry>
+        </collision>
+        <visual name="floor_visual">
+          <geometry><plane><normal>0 0 1</normal><size>30 30</size></plane></geometry>
+          <material><ambient>0.7 0.7 0.7 1</ambient></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Outer boundary: x=-2..10, y=-6..6. Wall height is above the LiDAR. -->
+    <model name="outer_walls">
+      <static>true</static>
+      <pose>4 0 0 0 0 0</pose>
+      <link name="walls">
+        <collision name="north_collision">
+          <pose>0 6 1.5 0 0 0</pose>
+          <geometry><box><size>12.2 0.2 3</size></box></geometry>
+        </collision>
+        <visual name="north_visual">
+          <pose>0 6 1.5 0 0 0</pose>
+          <geometry><box><size>12.2 0.2 3</size></box></geometry>
+        </visual>
+        <collision name="south_collision">
+          <pose>0 -6 1.5 0 0 0</pose>
+          <geometry><box><size>12.2 0.2 3</size></box></geometry>
+        </collision>
+        <visual name="south_visual">
+          <pose>0 -6 1.5 0 0 0</pose>
+          <geometry><box><size>12.2 0.2 3</size></box></geometry>
+        </visual>
+        <collision name="east_collision">
+          <pose>6 0 1.5 0 0 0</pose>
+          <geometry><box><size>0.2 12.2 3</size></box></geometry>
+        </collision>
+        <visual name="east_visual">
+          <pose>6 0 1.5 0 0 0</pose>
+          <geometry><box><size>0.2 12.2 3</size></box></geometry>
+        </visual>
+        <collision name="west_collision">
+          <pose>-6 0 1.5 0 0 0</pose>
+          <geometry><box><size>0.2 12.2 3</size></box></geometry>
+        </collision>
+        <visual name="west_visual">
+          <pose>-6 0 1.5 0 0 0</pose>
+          <geometry><box><size>0.2 12.2 3</size></box></geometry>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Solid 4 x 4 m central island; the corridor around it is about 4 m wide. -->
+    <model name="central_wall">
+      <static>true</static>
+      <pose>4 0 1.5 0 0 0</pose>
+      <link name="wall">
+        <collision name="collision">
+          <geometry><box><size>4 4 3</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4 4 3</size></box></geometry>
+          <material><ambient>0.3 0.4 0.8 1</ambient></material>
+        </visual>
+      </link>
+    </model>
+  </world>
+</sdf>

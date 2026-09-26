@@ -70,7 +70,7 @@ class Monitor:
         try:
             from unitree_hg.msg import LowState
             from rclpy.qos import qos_profile_sensor_data
-            n.create_subscription(LowState, "/lowstate",
+            n.create_subscription(LowState, "/lf/lowstate",  # g1_sensors' default input
                                   lambda m: setattr(self, "lowstate_count",
                                                     self.lowstate_count + 1),
                                   qos_profile_sensor_data)
@@ -78,6 +78,16 @@ class Monitor:
             pass
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         n.create_subscription(OccupancyGrid, "/map", lambda m: setattr(self, "map", m), latched)
+
+    def wait_for_publishers(self, topics, timeout=60.0):
+        """Block until every topic has a publisher (the launched nodes are up)."""
+        end = time.time() + timeout
+        while time.time() < end:
+            rclpy.spin_once(self.node, timeout_sec=0.1)
+            if all(self.node.count_publishers(t) for t in topics):
+                return
+        missing = [t for t in topics if not self.node.count_publishers(t)]
+        raise AssertionError(f"launch not ready after {timeout:.0f} s: no publisher on {missing}")
 
     def spin(self, seconds):
         end = time.time() + seconds
@@ -138,10 +148,12 @@ def tracking_error(mon):
     return dist, dyaw, travelled
 
 
-def run(tmp_path, launches, sim_args=(), settle=5.0):
+def run(tmp_path, launches, sim_args=(), ready_topics=("/odom", "/map"), settle=3.0):
     procs = [Proc(cmd, tmp_path / f"launch_{i}.log") for i, cmd in enumerate(launches)]
     mon = Monitor()
     try:
+        # wait for the nodes (a cold container can take > 5 s), then let them finish setting up
+        mon.wait_for_publishers(ready_topics)
         mon.spin(settle)
         sim = Proc([sys.executable, SIM, "--duration", str(DURATION), *sim_args],
                    tmp_path / "sim.log")
@@ -195,7 +207,8 @@ def test_tf_chain_on_robot_clock_with_mapping(tmp_path):
     offset = -73.0
     mon = run(tmp_path, [["ros2", "launch", "g1_sensors", "tf_chain.launch.py"],
                          mapping(tmp_path, "static_tf:=false")],
-              sim_args=("--lowstate", "--clock-offset", str(offset)))
+              sim_args=("--lowstate", "--clock-offset", str(offset)),
+              ready_topics=("/odom", "/map", "/joint_states"))
     try:
         assert len(mon.joint_states) > 100
         rate, rate_in = len(mon.joint_states) / DURATION, mon.lowstate_count / DURATION

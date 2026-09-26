@@ -9,8 +9,7 @@ Read-only towards the robot: subscribes to /lowstate and /dog_imu_raw, publishes
 static_tf:=false). Topic names, joint order, and glue frames live in config/g1_sensors.yaml.
 
 Live (robot-connected container):   ros2 launch g1_sensors tf_chain.launch.py
-Replay (SIM=1 container, domain 77): ros2 launch g1_sensors tf_chain.launch.py \
-                                         use_sim_time:=true lowstate_topic:=/lf/lowstate
+Replay (SIM=1 container, domain 77): ros2 launch g1_sensors tf_chain.launch.py use_sim_time:=true
                                      ros2 bag play <bag> --clock 200
 """
 import os
@@ -80,7 +79,7 @@ def generate_launch_description():
                               description="true when replaying a bag with --clock."),
         DeclareLaunchArgument("lowstate_topic", default_value="",
                               description="Override the YAML's lowstate topic, e.g. "
-                                          "/lf/lowstate for survey bags."),
+                                          "/lowstate (1 kHz, more CPU)."),
         DeclareLaunchArgument("mesh_dir",
                               default_value="/ws/third_party/unitree_ros/robots/g1_description/"
                                             "meshes",

@@ -7,22 +7,30 @@ ROS 2 graph (no unitree_sdk2 in this process, AGENTS.md §5).
 Stamps: LowState has no header. Joint states are stamped on the ROBOT's clock, so /tf lines up
 with the LiDAR and IMU header stamps even when the host clock is off (it was ~73 s ahead). The
 offset is the median of (header.stamp - receive time) of a robot-stamped reference topic
-(/dog_imu_raw) over the last `clock_window` seconds. Works live and in replay (use_sim_time).
+(the LiDAR IMU) over the last `clock_window` seconds. Works live and in replay (use_sim_time).
 stamp_source:=receive uses the receive time instead.
 
-Topics (remap): lowstate -> unitree_hg/LowState (/lowstate live, /lf/lowstate in survey bags),
-clock_reference -> sensor_msgs/Imu, joint_states -> output.
+CPU: inputs are taken as raw CDR bytes. Only the header stamp is read from the reference (any
+message that starts with std_msgs/Header works), and LowState is deserialized only when a joint
+state is published (publish_rate).
+
+Topics (remap): lowstate -> unitree_hg/LowState (/lf/lowstate, 20 Hz, live and in bags),
+clock_reference -> a header-stamped message (sensor_msgs/Imu), joint_states -> output.
 """
 from collections import deque
+import struct
 
 import numpy as np
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
+from rclpy.serialization import deserialize_message
 from rclpy.time import Time
 from sensor_msgs.msg import Imu, JointState
 from unitree_hg.msg import LowState
+
+from g1_sensors.lifetime import exit_with_parent
 
 
 class LowStateToJointStates(Node):
@@ -40,22 +48,25 @@ class LowStateToJointStates(Node):
         self.next_pub_ns = None
         self.offsets = deque()  # (receive ns, header - receive ns)
         self.pub = self.create_publisher(JointState, "joint_states", 10)
-        self.create_subscription(LowState, "lowstate", self.on_lowstate, qos_profile_sensor_data)
+        self.create_subscription(LowState, "lowstate", self.on_lowstate, qos_profile_sensor_data,
+                                 raw=True)
         if self.stamp_source == "robot_clock":
             self.create_subscription(Imu, "clock_reference", self.on_reference,
-                                     qos_profile_sensor_data)
+                                     qos_profile_sensor_data, raw=True)
         self.warned = False
 
-    def on_reference(self, msg):
+    def on_reference(self, raw):
         now = self.get_clock().now().nanoseconds
         if self.offsets and now < self.offsets[-1][0]:
             self.offsets.clear()  # time went backwards (bag restarted)
-        stamp = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
+        # CDR: 4-byte encapsulation header (byte 1 == 1: little endian), then header.stamp
+        sec, nanosec = struct.unpack_from("<iI" if raw[1] == 1 else ">iI", raw, 4)
+        stamp = sec * 1_000_000_000 + nanosec
         self.offsets.append((now, stamp - now))
         while self.offsets[0][0] < now - self.window_ns:
             self.offsets.popleft()
 
-    def on_lowstate(self, msg):
+    def on_lowstate(self, raw):
         now = self.get_clock().now().nanoseconds
         # Fixed schedule (not "period since the last publish"), so irregular input still yields
         # ~publish_rate. Resync after a stall or when time jumps back (bag restart).
@@ -74,6 +85,7 @@ class LowStateToJointStates(Node):
         if self.period_ns:
             nxt = (self.next_pub_ns or now) + self.period_ns
             self.next_pub_ns = nxt if 0 <= nxt - now <= self.period_ns else now + self.period_ns
+        msg = deserialize_message(raw, LowState)
         js = JointState()
         js.header.stamp = Time(nanoseconds=now + offset).to_msg()
         js.name = self.names
@@ -85,6 +97,7 @@ class LowStateToJointStates(Node):
 
 
 def main():
+    exit_with_parent()
     rclpy.init()
     try:
         rclpy.spin(LowStateToJointStates())

@@ -3,6 +3,8 @@
 # Usage:
 #   ROBOT_IFACE=enp2s0 scripts/run_humble.sh [command...]   # robot mode: DDS bound to the G1 NIC
 #   SIM=1 scripts/run_humble.sh [command...]                # sim mode: isolated DDS domain, no robot
+# The container is removed on exit (--rm): one live session = one container. End a session with
+# `bash /ws/scripts/stop_ros.sh` inside, or scripts/stop_humble.sh on the host (AGENTS.md §19).
 set -e
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 IMAGE=g1-humble

@@ -6,7 +6,7 @@ Publishes what the robot publishes (AGENTS.md §7), in the robot's formats:
   /utlidar/imu_livox_mid360    Imu in livox_frame, acceleration in g, no orientation
   /dog_imu_raw                 Imu in dog_imu_link (= robot_center), orientation populated
   /dog_odom                    Odometry odom -> robot_center (ground truth here)
-  /lowstate                    unitree_hg/LowState, all joints at 0 (only with --lowstate)
+  /lowstate, /lf/lowstate      unitree_hg/LowState, all joints at 0, 200 Hz / 20 Hz (--lowstate)
 
 The robot walks through a ray-cast room (walls, floor, ceiling, pillars). Mount geometry is the
 legacy fallback extrinsic of g1_mapping (robot_center -> livox_frame), so g1_mapping must run with
@@ -107,6 +107,9 @@ class SimG1(Node):
             from unitree_hg.msg import LowState
             self.LowState = LowState
             self.pub_low = self.create_publisher(LowState, "/lowstate", qos_profile_sensor_data)
+            self.pub_low_lf = self.create_publisher(LowState, "/lf/lowstate",
+                                                    qos_profile_sensor_data)
+            self.low_count = 0
         # Ray casting takes tens of ms: keep it off the IMU / LowState timer so those stream
         # smoothly like on the robot (numpy releases the GIL).
         self.create_timer(0.1, self.on_scan, callback_group=MutuallyExclusiveCallbackGroup())
@@ -159,6 +162,9 @@ class SimG1(Node):
 
         if self.pub_low is not None:
             self.pub_low.publish(self.LowState())
+            self.low_count += 1
+            if self.low_count % 10 == 0:  # the robot's 20 Hz copy
+                self.pub_low_lf.publish(self.LowState())
 
     def on_scan(self):
         # Like the real sensor: published when the 100 ms sweep ENDS, stamped at its start.
