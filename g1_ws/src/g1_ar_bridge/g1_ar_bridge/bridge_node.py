@@ -168,7 +168,7 @@ class ArBridgeNode(Node):
             min_views=int(p("min_views", 6).value),
             min_baseline_m=float(p("min_baseline_m", 0.3).value),
             max_view_reproj_px=float(p("max_view_reproj_px", 4.0).value),
-            max_rms_px=float(p("max_rms_px", 3.0).value),
+            max_rms_px=float(p("max_rms_px", 6.0).value),
             max_tilt_deg=float(p("max_tilt_deg", 10.0).value),
             registration_timeout_s=float(p("registration_timeout_s", 180.0).value),
             pose_hz=float(p("pose_hz", 10.0).value),

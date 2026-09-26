@@ -52,7 +52,7 @@ class BridgeConfig:
     min_views: int = 6                            # glasses views of the tag before commit
     min_baseline_m: float = 0.3                   # glasses movement while collecting
     max_view_reproj_px: float = 4.0               # per glasses frame (upstream gates at 3-6 px)
-    max_rms_px: float = 3.0                       # multi-view fit, to commit
+    max_rms_px: float = 6.0                       # multi-view fit, to commit (real glasses: 3-7 px)
     max_tilt_deg: float = 10.0                    # "up" disagreement robot tag vs glasses tag
     registration_timeout_s: float = 180.0
     pose_hz: float = 10.0

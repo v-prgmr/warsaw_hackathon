@@ -1557,5 +1557,9 @@ robot anchor worked (`map -> ar_tag_0`, 1–2 px, stable to ~1 cm), but the glas
 committed** (the Lens hides its text above 80 % progress; the bridge logged nothing; Skip left
 the glasses unregistered). Since then the bridge logs what the registration waits for, records
 every attempt (`record_dir`, `bags/ar_registration/`) for `replay_registration`, and
-`ar_bridge.launch.py fake_robot:=true` tests the ROS path at home. Next: home test with
-`fake_robot:=true`, then the robot again, and replay the recording if it does not commit.
+`ar_bridge.launch.py fake_robot:=true` tests the ROS path at home. Home test with the real
+glasses (`fake_robot:=true`, 2026-09-26): tag views all consistent (1–1.5 cm), but the
+multi-view fit of the real Spectacles poses is 3–7 px (17 px in the first seconds), so the old
+3 px gate took 106 s; replaying the recording, 6 px commits after 29 s with 0.9° less yaw than
+the final estimate. `max_rms_px` is now 6. This most likely also blocked the robot run. Next: the
+robot again; replay the recording if it does not commit.

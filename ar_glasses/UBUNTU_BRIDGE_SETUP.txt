@@ -144,7 +144,8 @@ TROUBLESHOOTING
          anchor yes, tilt 1.3 deg; progress 84%; waiting for: sideways movement 0.18 m < 0.3 m ...
   "waiting for:" names the blocker:
     consistent views N/6       -> views disagree: step closer, move slower, more light
-    multi-view fit X px        -> glasses tracking/timing is poor: stand still at each step
+    multi-view fit X px        -> glasses tracking/timing: stand still ~1 s at each step; it
+                                  usually improves after 20-30 s (limit max_rms_px, 6 px)
     sideways movement ...      -> step further sideways (0.3 m), or collect 12 good views
     robot anchor: no TF ...    -> the bridge does not see map -> ar_tag_0: check tag_anchor (B5)
     'up' disagrees ...         -> wrong robot camera TF (see tag_anchor's tag_up_vs_map_up_deg)
