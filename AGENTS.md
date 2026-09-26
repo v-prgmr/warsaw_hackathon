@@ -639,6 +639,8 @@ For V1, use the OAK-D depth as the geometric source for the object whenever poss
 
 The high-level path is implemented in `g1_ws/src/g1_loco_cmdvel` (2026-09-26): `/cmd_vel` → `cmd_vel_gateway` (ROS) → Unix socket → `g1_loco_client` (Unitree SDK, separate process, §5) → `LocoClient::SetVelocity`. No actuation by default: the gateway starts with `enabled:=false`, and the client stays dry-run unless given both `--enabled=true` and `--i-accept-high-level-actuation=true` on the wired robot interface. Each process clamps velocity on its own (0.10 / 0.05 m/s, 0.20 rad/s). Each also requires fresh battery ≥ 20 %: the gateway from `/battery_state`, the client from the raw `rt/lf/bmsstate`. They send zero / `StopMove` after 0.30 s without a command and on exit, and every `SetVelocity` lasts only 0.20 s. Procedure and tests: `g1_loco_cmdvel/README.md`.
 
+Status (2026-09-26): the Stage 3 dry run passed on domain 77. Stage 4 is written up in `g1_loco_cmdvel/README.md` with `stage4_single_command.py`, and the script's logic passed an offline dry run. Stage 4 is one 0.05 m/s forward command for ~0.25 s, with the robot's feet on flat ground under harness support, two people present, the remote's emergency damping ready, and battery > 20 %. **The enabled path has not moved the robot yet.**
+
 Do not treat it as the mapping / reconstruction system. RTAB-Map is the primary metric mapping backbone.
 
 The useful interface is:
@@ -1036,7 +1038,7 @@ When interacting with the physical G1:
 - maintain a `/cmd_vel` freshness timeout
 - do not bypass existing G1 safety / motion-switcher logic
 - do not assume a simulator-tested command is safe on hardware
-- end every live session with `scripts/stop_ros.sh` (inside the container) or `scripts/stop_humble.sh` (host), then check that none of our topics remain. Never `kill -9` a `ros2 launch`: its nodes are orphaned and keep publishing onto the robot's network. `kill -INT` on a launch started with `&` from a script does nothing, because bash starts background jobs with SIGINT ignored (both happened on 2026-09-26). Our Python nodes also exit when their launch process dies
+- end every live session with `scripts/stop_ros.sh` (inside the container) or `scripts/stop_humble.sh` (host), then check that none of our topics remain. Never `kill -9` a `ros2 launch`: its nodes are orphaned and keep publishing onto the robot's network. `kill -INT` on a launch started with `&` from a script does nothing, because bash starts background jobs with SIGINT ignored (both happened on 2026-09-26). Our Python nodes also exit when their launch process dies. `stop_ros.sh` also stops `g1_loco_client`, which calls `StopMove` before exiting
 - replay bags only in an isolated DDS domain (`SIM=1 scripts/run_humble.sh` -> domain 77), never on the robot's domain 0 while connected: a replay republishes `/dog_odom`, `/lf/lowstate`, and the LiDAR, plus `/api/sport/request` and `/cmd_vel` from `live_run` bags, onto the live robot's network
 
 The organizer's (x-kom) rules for using the G1 are binding and take precedence over everything in this file. See **Section 25**.
