@@ -70,5 +70,9 @@ static_transforms:
   # realsense-ros root frame (x forward, z up, like d435_link). UNVERIFIED: check in RViz when the
   # RealSense runs (its driver publishes camera_link -> optical frames on /tf_static).
   - {parent: d435_link, child: camera_link, xyz: [0.0, 0.0, 0.0], rpy: [0.0, 0.0, 0.0]}
-  # OAK-D chest camera: MEASURE at mounting time (tape, relative to torso_link) and add, e.g.
-  # - {parent: torso_link, child: oak-d-base-frame, xyz: [x, y, z], rpy: [r, p, y]}
+  # Provisional OAK-D chest extrinsic: 24-pose ChArUco take 2026-09-26 18:16, derived from
+  # camera_color_optical_frame -> oak_rgb_camera_optical_frame via BOTH drivers' /tf_static.
+  # Source, quality metrics and full precision: config/oakd_realsense_provisional.yaml.
+  # The OAK driver owns oak-d-base-frame -> oak -> oak_rgb_camera_optical_frame;
+  # only this node owns camera_link -> oak-d-base-frame. Do not start a second publisher.
+  - {parent: camera_link, child: oak-d-base-frame, xyz: [0.302104232930424, -0.0168910079265954, -0.153149918960739], rpy: [-0.0300345757882418, -0.748448923605772, 0.0102970467354823]}

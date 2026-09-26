@@ -1,0 +1,33 @@
+# Provisional extrinsic, explicitly accepted for use on 2026-09-26. Not precision validated.
+# This is a data artifact: g1_sensors.yaml is the single runtime TF publisher configuration.
+source_bag: camera_calibration_triggered_20260926_181606_243087
+target: "7x5 ChArUco, 30 mm square, 22 mm marker, DICT_4X4_50"
+samples: {recorded_pairs: 24, usable_pairs: 21, varied_board_viewpoints: 20, fit_inliers: 16, held_out_pairs: 5}
+held_out:
+  translation_error_mm_median: 5.366289256287121
+  rotation_error_deg_median: 1.164578936265099
+  realsense_cross_projection_px_median: 1.8950513261878246
+  oak_cross_projection_px_median: 7.3822495571398115
+  strict_quality_gate_passed: false
+frames:
+  source_optical: camera_color_optical_frame
+  target_optical: oak_rgb_camera_optical_frame
+  mount_parent: camera_link
+  mount_child: oak-d-base-frame
+# T_parent_child maps a point in child coordinates into parent coordinates.
+# T_camera_link_oak_base = T_camera_link_rs_optical * T_rs_optical_oak_optical
+#                          * inverse(T_oak_base_oak_optical).
+mount_transform:
+  xyz_m: [0.30210423293042404, -0.01689100792659535, -0.1531499189607394]
+  rpy_rad: [-0.030034575788241792, -0.7484489236057718, 0.0102970467354823]
+  quaternion_xyzw: [-0.012095425622934013, -0.36557667478928435, -0.0006976623888241836, 0.9307023739070407]
+  matrix:
+    - [0.73270642, 0.01014224, -0.68046928, 0.30210423293042404]
+    - [0.00754498, 0.99970643, 0.02302458, -0.01689100792659535]
+    - [0.68050304, -0.02200438, 0.73241479, -0.1531499189607394]
+    - [0.0, 0.0, 0.0, 1.0]
+optical_transform:
+  parent: camera_color_optical_frame
+  child: oak_rgb_camera_optical_frame
+  xyz_m: [0.033755545130397635, 0.15285940138598297, 0.30220525582944263]
+  quaternion_xyzw: [0.3658355541095593, 0.002419454617755523, -0.01410588675800652, 0.9305694587442007]

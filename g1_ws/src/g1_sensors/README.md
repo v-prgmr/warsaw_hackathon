@@ -35,6 +35,21 @@ ros2 launch g1_sensors tf_chain.launch.py                 # rviz:=true for Robot
 ros2 launch g1_mapping mapping.launch.py static_tf:=false
 ```
 
+The `tf_chain` launch is the **single runtime owner** of the provisional
+`camera_link -> oak-d-base-frame` mount TF. Keep the RealSense and OAK-D drivers running for
+their own camera-internal `/tf_static` links. After starting `tf_chain`, inspect the mount
+and the connected optical frames with:
+
+```bash
+ros2 run tf2_ros tf2_echo camera_link oak-d-base-frame
+ros2 run tf2_ros tf2_echo camera_color_optical_frame oak_rgb_camera_optical_frame
+```
+
+The calibration artifact is also stored on the G1 at
+`/home/unitree/g1_calibration/oakd_realsense_provisional.yaml` for recovery. It is **data**, not
+a second publisher: do not run an additional `static_transform_publisher` on the Orin for this
+child frame while `tf_chain` is running.
+
 Run it during every capture so `/tf`, `/tf_static` and `/joint_states` land in the bag. On a bag
 recorded without it (replay only in the `SIM=1` container, domain 77):
 
@@ -86,7 +101,14 @@ Topic names, the joint order, and the glue frames live in `config/g1_sensors.yam
 ## Open
 
 - `d435_link -> camera_link` identity is unverified: check in RViz when the RealSense runs.
-- OAK-D: measure its mount relative to `torso_link` and add it to `static_transforms`.
+- OAK-D: `g1_sensors.yaml` now includes a **provisional**, ChArUco-derived
+  `camera_link -> oak-d-base-frame` mount link. Its source, optical transform and held-out
+  errors are in `config/oakd_realsense_provisional.yaml`. The OAK driver publishes the
+  internal `oak-d-base-frame -> oak -> oak_rgb_camera_optical_frame` chain; RealSense
+  publishes `camera_link -> camera_color_optical_frame`. Publish the mount link **only
+  through this `tf_chain` launch**, never also through another static TF node. Check
+  LiDAR/OAK depth-cloud alignment before relying on its 3D POIs. If the OAK mount moves,
+  remeasure and replace the calibration.
 - The ~1.5° pelvis-IMU disagreement tilts the map by that much when `/dog_imu_raw` is the
   gravity reference; `imu_source:=livox` avoids it (its IMU is rigid with the LiDAR). Decide
   with `compare_imu_sources` on a walking bag.
