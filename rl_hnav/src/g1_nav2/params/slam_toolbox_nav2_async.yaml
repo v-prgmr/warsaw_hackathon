@@ -1,0 +1,22 @@
+slam_toolbox:
+  ros__parameters:
+    use_sim_time: true
+    map_frame: map
+    odom_frame: odom
+    base_frame: base_footprint
+    scan_topic: scan
+    # The project map relay publishes /map with current sim time for Nav2.
+    map_name: /slam_toolbox/map_raw
+    throttle_scans: 1
+
+    # The installed SLAM Toolbox 2.6.10 timestamps map->odom with its last
+    # accepted scan, which goes stale when the G1 turns without translating.
+    # The map_odom_tf node is the sole TF owner in this Nav2 simulation.
+    transform_publish_period: 0.0
+    map_update_interval: 2.0
+    map_publish_period: 1.0
+    minimum_time_interval: 0.0
+    tf_buffer_duration: 30.0
+    transform_timeout: 0.5
+    scan_queue_size: 200
+    mode: mapping

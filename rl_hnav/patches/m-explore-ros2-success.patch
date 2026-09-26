@@ -1,0 +1,13 @@
+diff --git a/explore/src/explore.cpp b/explore/src/explore.cpp
+--- a/explore/src/explore.cpp
++++ b/explore/src/explore.cpp
+@@ -386,5 +386,9 @@ void Explore::reachedGoal(const NavigationGoalHandle::WrappedResult& result,
+       RCLCPP_DEBUG(logger_, "Goal was successful");
+       last_progress_ = this->now();
+       prev_distance_ = 0;
++      // Nav2 accepts a goal within its XY tolerance. Re-selecting the same
++      // centroid immediately can create an unbounded success/retry loop when
++      // the frontier is still visible just beyond the robot's sensor range.
++      frontier_blacklist_.push_back(frontier_goal);
+       break;
+     case rclcpp_action::ResultCode::ABORTED:
