@@ -83,11 +83,18 @@ rtabmap_parameters:
   RGBD/LinearUpdate: "0.05"
   RGBD/CreateOccupancyGrid: "true"
   Grid/Sensor: "0"                         # 2D grid from the LiDAR only (RGB-D is for color)
-  Grid/RangeMax: "8"
+  Grid/RangeMax: "4"                       # 8 m let ray-traced free space leak past the zone edge
   Grid/CellSize: "0.05"
   Grid/RayTracing: "true"                  # clear free space along LiDAR rays so transient/dynamic
                                            # obstacles (e.g. a person walking past) don't stay baked
                                            # into a node's local grid; re-observing the spot clears it
+  # 2D ray tracing. 3D (OctoMap) ray tracing erased tables and chairs: floor rays pass under
+  # tabletops and between legs. Reprocessed g1_rtabmap_dry_20260926_202136.db, obstacles kept at
+  # the zone edge / inside / free space outside the zone: 3D + 8 m 55 % / 31 % / 15.7 m2,
+  # 2D + 4 m 75 % / 80 % / 0.4 m2 (ray tracing off: 100 % / 100 % / 2.4 m2).
+  # Cost: local grids are x,y only, so /cloud_map is flat. Get the 3D map from the database
+  # (rtabmap-export --scan), and give compare_imu_sources a config with Grid/3D "true".
+  Grid/3D: "false"
 
   Grid/MaxObstacleHeight: "1.0"            # relative to robot_center (~1.7 m above the floor)
   # Normals-only ground segmentation classifies ANY horizontal surface as ground, so tables came
