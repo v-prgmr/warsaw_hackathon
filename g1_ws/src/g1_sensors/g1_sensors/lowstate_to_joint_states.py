@@ -30,6 +30,8 @@ from rclpy.time import Time
 from sensor_msgs.msg import Imu, JointState
 from unitree_hg.msg import LowState
 
+from g1_sensors.lifetime import exit_with_parent
+
 
 class LowStateToJointStates(Node):
     def __init__(self):
@@ -90,6 +92,7 @@ class LowStateToJointStates(Node):
 
 
 def main():
+    exit_with_parent()
     rclpy.init()
     try:
         rclpy.spin(LowStateToJointStates())

@@ -13,6 +13,8 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from tf2_ros import TransformBroadcaster
 
+from g1_mapping.lifetime import exit_with_parent
+
 
 class OdomToTf(Node):
     def __init__(self):
@@ -37,6 +39,7 @@ class OdomToTf(Node):
 
 
 def main():
+    exit_with_parent()
     rclpy.init()
     try:
         rclpy.spin(OdomToTf())
