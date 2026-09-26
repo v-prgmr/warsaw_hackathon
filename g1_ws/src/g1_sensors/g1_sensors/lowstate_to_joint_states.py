@@ -36,8 +36,8 @@ class LowStateToJointStates(Node):
             raise RuntimeError("joint_names must list the LowState motor order")
         if self.stamp_source not in ("robot_clock", "receive"):
             raise RuntimeError("stamp_source must be 'robot_clock' or 'receive'")
-        self.min_period_ns = int(1e9 / rate) if rate > 0 else 0
-        self.last_pub_ns = None
+        self.period_ns = int(1e9 / rate) if rate > 0 else 0
+        self.next_pub_ns = None
         self.offsets = deque()  # (receive ns, header - receive ns)
         self.pub = self.create_publisher(JointState, "joint_states", 10)
         self.create_subscription(LowState, "lowstate", self.on_lowstate, qos_profile_sensor_data)
@@ -57,8 +57,11 @@ class LowStateToJointStates(Node):
 
     def on_lowstate(self, msg):
         now = self.get_clock().now().nanoseconds
-        if self.last_pub_ns is not None and 0 <= now - self.last_pub_ns < self.min_period_ns:
-            return
+        # Fixed schedule (not "period since the last publish"), so irregular input still yields
+        # ~publish_rate. Resync after a stall or when time jumps back (bag restart).
+        if self.next_pub_ns is not None and self.period_ns:
+            if now < self.next_pub_ns and self.next_pub_ns - now <= self.period_ns:
+                return
         if self.stamp_source == "robot_clock":
             if not self.offsets:
                 if not self.warned:
@@ -68,7 +71,9 @@ class LowStateToJointStates(Node):
             offset = int(np.median([o for _, o in self.offsets]))
         else:
             offset = 0
-        self.last_pub_ns = now
+        if self.period_ns:
+            nxt = (self.next_pub_ns or now) + self.period_ns
+            self.next_pub_ns = nxt if 0 <= nxt - now <= self.period_ns else now + self.period_ns
         js = JointState()
         js.header.stamp = Time(nanoseconds=now + offset).to_msg()
         js.name = self.names

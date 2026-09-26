@@ -64,11 +64,13 @@ class KeyframeNode(Node):
         self.last_accept_t = None
         self.last_accept_xyz = None
         self.latest_odom_xyz = None
+        self.latest_odom_frame = None
 
         # Sensor QoS (best_effort) matches both reliable and best_effort publishers.
-        self.color_sub = Subscriber(self, Image, self.color_topic, qos_profile=qos_profile_sensor_data)
-        self.depth_sub = Subscriber(self, Image, self.depth_topic, qos_profile=qos_profile_sensor_data)
-        self.info_sub = Subscriber(self, CameraInfo, self.info_topic, qos_profile=qos_profile_sensor_data)
+        qos = qos_profile_sensor_data
+        self.color_sub = Subscriber(self, Image, self.color_topic, qos_profile=qos)
+        self.depth_sub = Subscriber(self, Image, self.depth_topic, qos_profile=qos)
+        self.info_sub = Subscriber(self, CameraInfo, self.info_topic, qos_profile=qos)
         self.sync = ApproximateTimeSynchronizer(
             [self.color_sub, self.depth_sub, self.info_sub],
             queue_size=int(self.sync_queue), slop=float(self.sync_slop_s),
@@ -89,6 +91,7 @@ class KeyframeNode(Node):
     def on_odom(self, msg: Odometry):
         pos = msg.pose.pose.position
         self.latest_odom_xyz = np.array([pos.x, pos.y, pos.z])
+        self.latest_odom_frame = msg.header.frame_id or "odom"
 
     def on_rgbd(self, color_msg: Image, depth_msg: Image, info_msg: CameraInfo):
         if len(self.manifest) >= self.max_keyframes:
@@ -96,8 +99,8 @@ class KeyframeNode(Node):
 
         t = _stamp_to_sec(color_msg.header.stamp)
 
-        # --- temporal spacing ---
-        if self.last_accept_t is not None and (t - self.last_accept_t) < self.min_time_gap_s:
+        # --- temporal spacing (a negative gap means the bag restarted: accept) ---
+        if self.last_accept_t is not None and 0.0 <= (t - self.last_accept_t) < self.min_time_gap_s:
             return
 
         # --- sharpness ---
@@ -136,9 +139,10 @@ class KeyframeNode(Node):
         depth = self.bridge.imgmsg_to_cv2(depth_msg, desired_encoding="passthrough")
         depth = np.asarray(depth)
         if np.issubdtype(depth.dtype, np.floating):
-            # metres -> millimetres
+            # metres -> millimetres; invalid / out-of-range (> 65.535 m) -> 0 = no depth
             depth_mm = np.nan_to_num(depth * 1000.0, nan=0.0, posinf=0.0, neginf=0.0)
-            depth_mm = depth_mm.astype(np.uint16)
+            depth_mm[(depth_mm < 0) | (depth_mm > 65535)] = 0
+            depth_mm = np.round(depth_mm).astype(np.uint16)
         else:
             depth_mm = depth.astype(np.uint16)
         np.save(os.path.join(kdir, "depth.npy"), depth_mm)
@@ -162,7 +166,7 @@ class KeyframeNode(Node):
             "depth_encoding": depth_msg.encoding,
         }
         if cur_xyz is not None:
-            meta["odom_pose"] = {"frame": "odom",
+            meta["odom_pose"] = {"frame": self.latest_odom_frame,
                                  "position": [float(v) for v in cur_xyz]}
         with open(os.path.join(kdir, "meta.yaml"), "w") as f:
             yaml.safe_dump(meta, f)
@@ -170,7 +174,8 @@ class KeyframeNode(Node):
         self.manifest.append({"id": kid, "dir": f"keyframe_{kid}", "blur_var": blur_var,
                               "frame_id": info_msg.header.frame_id})
         self._write_manifest()
-        self.get_logger().info(f"accepted keyframe_{kid} (blur {blur_var:.1f}) [{len(self.manifest)}]")
+        self.get_logger().info(
+            f"accepted keyframe_{kid} (blur {blur_var:.1f}) [{len(self.manifest)}]")
 
     def _write_manifest(self):
         with open(os.path.join(self.output_dir, "manifest.json"), "w") as f:

@@ -33,6 +33,14 @@ ros2 launch g1_mapping mapping.launch.py use_sim_time:=true static_tf:=false
 ros2 bag play <bag> --clock 200
 ```
 
+| Argument | Default | Meaning |
+|---|---|---|
+| `use_sim_time` | `false` | `true` when replaying a bag with `--clock` |
+| `lowstate_topic` | from the YAML (`/lowstate`) | e.g. `/lf/lowstate` for survey bags |
+| `urdf` | `urdf/g1_29dof_rev_1_0.urdf` | robot model |
+| `mesh_dir` | `/ws/third_party/unitree_ros/robots/g1_description/meshes` | meshes for RViz's RobotModel (optional; needs the `unitree_ros` submodule) |
+| `rviz` | `false` | RViz with RobotModel, TF and the LiDAR |
+
 Topic names, the joint order, and the glue frames live in `config/g1_sensors.yaml`.
 
 ## Design notes

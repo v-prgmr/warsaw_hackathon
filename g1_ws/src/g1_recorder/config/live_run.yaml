@@ -14,6 +14,9 @@ topics:
   - /lf/bmsstate
   - /tf
   - /tf_static
+  # Published by our host nodes (g1_sensors tf_chain, g1_mapping) during a live run (AGENTS.md §6)
+  - /joint_states
+  - /odom
   - /cmd_vel
   - /api/sport/request
   - /api/sport/response

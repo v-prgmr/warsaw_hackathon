@@ -1257,6 +1257,8 @@ All agents working on this project should:
 - make outputs inspectable in RViz / saved files
 - report assumptions explicitly
 - distinguish observed hardware facts from guesses
+- **keep this file current**: a change to architecture, packages, topics, frames, TF ownership, procedures, or milestone status updates AGENTS.md (and the package README) **in the same commit**. Record observed results with their date and the bag / data they came from
+- **run the tests before pushing** (§26): `SIM=1 scripts/run_humble.sh scripts/run_tests.sh`, plus `--integration` when touching `g1_mapping`, `g1_sensors`, or launch files. Add tests with new code
 
 If an implementation choice conflicts with this file, stop and surface the conflict rather than silently changing the architecture.
 
@@ -1327,7 +1329,8 @@ Cross-cutting (assign to lead): freeze the **sensor/topic/frame contract** + **c
   plus `/tf` and `/joint_states` whenever `g1_sensors tf_chain` runs during capture (the robot does not publish them). Semantic: OAK-D
   RGB + aligned depth + CameraInfo (**same resolution**; names to be verified). RealSense streams optional.
   Also: `/utlidar/imu_livox_mid360`, `/secondary_imu`, `/lf/bmsstate`.
-  Profiles: `g1_recorder/config/survey.yaml` (default), `live_run.yaml`. Check message counts per bag.
+  Profiles: `g1_recorder/config/survey.yaml` (default), `live_run.yaml` (adds full-rate `/lowstate`,
+  commands, Nav2, and our `/joint_states` + `/odom`). Check message counts per bag.
 - Existing bags `full_survey_take_01`, `rtab_take_*`, `rosbag2_2026_09_25-15_05_44` have **no `/tf`**; the
   `rtab_take_*` ones have no LiDAR/IMU either. Only `full_survey_take_01` works with `g1_mapping` (using its
   static fallback).
@@ -1450,3 +1453,24 @@ Agents must never "fix and retry" after an incident, and must not delete or rota
 - M5 (autonomous survey): gated by 25.1 / 25.3. Decide early whether to use high-level Loco client (fewer requirements) or `rl_hnav` (harness trial + supervisor first). Budget time for the harness trial and supervisor dry-run.
 - Mounting extra sensors: <= 1 kg, non-destructive, no occluding of existing sensors.
 - Recording (M0): `rosbag2` and supervisor logs run on the dev machine or a non-critical thread; do not add load to the command path.
+
+---
+
+# 26. Tests
+
+All tests run robot-off, in the project container, in the isolated sim DDS domain (§19):
+
+```bash
+SIM=1 scripts/run_humble.sh scripts/run_tests.sh                 # build + flake8 + unit + contract (~10 s)
+SIM=1 scripts/run_humble.sh scripts/run_tests.sh --integration   # + end-to-end runs (~3 min)
+```
+
+| Suite | Where | What it checks |
+|---|---|---|
+| unit | `g1_ws/src/<pkg>/test/` | `livox_cloud_fix` (ns→s, zero / range filter, layouts), `livox_imu_fix`, `odom_to_tf`, every `mapping.launch.py` option combination (one `odom -> base` owner, every consumed cloud / IMU topic has a producer), URDF + glue frames form one tree with the observed mounts, `/lowstate` bridge (robot-clock stamps, rate, time jumps), `keyframe_manager` selection rules + the frozen keyframe struct, `scene_server` stub |
+| contract | `g1_ws/tests/test_contracts.py` | recording profiles vs the §7 mandatory list, topic names shared across packages, the `ros2 bag record` command, **docs sync**: every package is named in this file and both READMEs, every launch argument is in its package README |
+| integration | `g1_ws/tests/test_integration.py` | the real launch files on a simulated G1 (`g1_ws/tests/sim_g1.py`: ray-cast room, MID-360 format with ns time and zero points, upside-down mount, both IMUs, `LowState`, robot clock 73 s behind the host): ICP odometry with `imu_source` dog / livox (drift < 3 % of the distance, 0 lost scans, `/map` with free + occupied cells), the `dog_odom` fallback, and `g1_sensors tf_chain` + `g1_mapping static_tf:=false` (joint states on the robot clock, upside-down `livox_frame`) |
+
+The simulator cannot replace a real bag: it checks plumbing, formats, frames and timing, not tuning on real data.
+
+Status (2026-09-26): 121 unit/contract tests + 4 integration tests pass (ROS 2 Humble; RTAB-Map from `introlab3it/rtabmap_ros:humble-latest`). Fixed on the way: `keyframe_manager` wrapped float depth > 65.5 m into garbage uint16, hardcoded `odom_pose.frame`, and rejected every frame after a bag restart; the `/lowstate` bridge's rate limiter published at about half rate with irregular input; `live_run` did not record `/joint_states` and `/odom`; `g1_mapping` now warns that `static_tf:=true` must not run together with `g1_sensors`.

@@ -275,15 +275,11 @@ These robot topics were verified live:
 | `/dog_imu_raw` | `sensor_msgs/msg/Imu` | Approximately 1 kHz; frame `dog_imu_link` |
 | `/utlidar/cloud_livox_mid360` | `sensor_msgs/msg/PointCloud2` | Approximately 10 Hz; frame `livox_frame` |
 
-The robot currently does not publish dynamic `/tf`. The topic remains in the profiles so future
-bridges are captured automatically. `/tf_static` is published by RealSense.
-
-**TF prerequisite:** the camera's internal TF does not connect `robot_center` to the RealSense or
-`livox_frame`. Existing G1 URDF variants contain `d435_link` and `mid360_link`, but their
-extrinsics and correspondence to the observed frames require validation on this robot. Supply a
-calibrated base-to-sensor transform or correctly mapped joint states and
-`robot_state_publisher` during capture; recording `/lf/lowstate` allows the latter to be regenerated
-offline only after a verified converter exists. Neither profile creates the missing TF chain.
+The robot does not publish `/tf`. Run `ros2 launch g1_sensors tf_chain.launch.py` during the
+capture so `/tf`, `/tf_static` and `/joint_states` (G1 URDF + joint states) land in the bag
+(AGENTS.md §10.1). Bags that only have `/lf/lowstate` can regenerate `/tf` at replay with the same
+launch file (`lowstate_topic:=/lf/lowstate`, see `g1_sensors/README.md`). The camera drivers
+publish their internal frames on `/tf_static`. Recording never creates the TF chain by itself.
 
 ### Custom Profile
 
@@ -447,14 +443,15 @@ sensor-data/best-effort subscription when they otherwise receive no messages.
 ### Playback reports that the wired interface is unavailable
 
 The terminal still has a robot-specific `CYCLONEDDS_URI`, but the Ethernet adapter is disconnected.
-For robot-off replay, use:
+For robot-off replay, use the isolated replay environment from **Replay** above:
 
 ```bash
 unset CYCLONEDDS_URI
-export ROS_LOCALHOST_ONLY=1
+export ROS_DOMAIN_ID=77
 ```
 
-Do not use localhost-only mode while recording from the robot.
+`ROS_LOCALHOST_ONLY=1` also isolates, but with CycloneDDS it limits a host to ~9 participants,
+too few for the mapping stack. Never use it while recording from the robot.
 
 ### Camera topics are absent
 

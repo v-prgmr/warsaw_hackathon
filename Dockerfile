@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-rosidl-generator-dds-idl \
     ros-humble-rosbag2-storage-mcap \
     ros-humble-tf2-tools \
+    python3-pytest \
+    flake8 \
     python3-pip \
     git \
     iproute2 \

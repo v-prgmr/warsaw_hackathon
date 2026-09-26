@@ -1,2 +1,5 @@
 bags/*
 !bags/.gitkeep
+__pycache__/
+*.pyc
+.pytest_cache/

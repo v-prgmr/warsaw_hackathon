@@ -64,6 +64,7 @@ def generate_launch_description():
         DeclareLaunchArgument("topics_file", default_value="",
                               description="Absolute topic YAML path; overrides profile"),
         DeclareLaunchArgument("qos_file", default_value="",
-                              description="Abs path to a qos_override.yaml (defaults to installed)"),
+                              description="Abs path to a qos_override.yaml "
+                                          "(defaults to installed)"),
         OpaqueFunction(function=_launch_record),
     ])

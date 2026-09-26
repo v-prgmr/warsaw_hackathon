@@ -29,6 +29,7 @@ ros2 bag play bags/full_survey_take_01 --clock
 | `use_rgbd` | `false` | attach RGB + aligned depth to map nodes (color; grid stays LiDAR-only) |
 | `static_tf` | `true` | publish the **estimated** fallback extrinsics from the YAML (legacy bags without `/tf` or `/lf/lowstate`). Set `false` when `g1_sensors tf_chain` runs (live, or replaying `/lf/lowstate`) |
 | `database_path` | `~/.ros/g1_rtabmap.db` | RTAB-Map database |
+| `delete_db` | `true` | start a new map (deletes the database); ignored with `localization:=true` |
 | `localization` | `false` | localize in an existing database instead of mapping |
 | `rtabmap_viz`, `rviz` | `false` | GUIs (`rviz/mapping.rviz`: TF, `/map`, `/cloud_map`, deskewed scan, `/odom`) |
 

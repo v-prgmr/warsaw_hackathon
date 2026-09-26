@@ -20,7 +20,7 @@ import os
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, LogInfo, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -69,6 +69,11 @@ def _launch_setup(context):
     nodes = []
 
     if _bool(context, "static_tf"):
+        # Two publishers of livox_frame / camera_link would make TF jump (AGENTS.md §6).
+        nodes.append(LogInfo(msg="[g1_mapping] static_tf:=true publishes the ESTIMATED fallback "
+                                 "extrinsics for legacy bags. Do NOT combine with g1_sensors "
+                                 "tf_chain (live robot, or bags with /tf or /lf/lowstate): "
+                                 "use static_tf:=false there."))
         for tf in cfg.get("static_transforms", []):
             (x, y, z), (roll, pitch, yaw) = tf["xyz"], tf["rpy"]
             nodes.append(Node(

@@ -18,7 +18,8 @@ class FakeRgbd(Node):
     def __init__(self):
         super().__init__("fake_rgbd_pub")
         self.color_pub = self.create_publisher(Image, "/camera/color/image_raw", 10)
-        self.depth_pub = self.create_publisher(Image, "/camera/aligned_depth_to_color/image_raw", 10)
+        self.depth_pub = self.create_publisher(
+            Image, "/camera/aligned_depth_to_color/image_raw", 10)
         self.info_pub = self.create_publisher(CameraInfo, "/camera/color/camera_info", 10)
         self.odom_pub = self.create_publisher(Odometry, "/odom", 10)
         self.bridge = CvBridge()
