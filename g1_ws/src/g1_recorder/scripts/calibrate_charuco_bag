@@ -1,0 +1,405 @@
+#!/usr/bin/env python3
+"""Estimate or verify RealSense-color -> OAK-color optical TF from an offline MCAP bag.
+
+The cameras' header clocks differ. Pair by the recorder's receipt time, and only
+accept intervals where the observed ChArUco board is stationary in BOTH views.
+"""
+
+import argparse
+from collections import defaultdict
+from dataclasses import dataclass
+from pathlib import Path
+
+import cv2
+import numpy as np
+import rosbag2_py
+from rclpy.serialization import deserialize_message
+from sensor_msgs.msg import CameraInfo, Image
+import yaml
+
+
+RS_IMAGE = "/camera/color/image_raw"
+OAK_IMAGE = "/oak/rgb/image_raw"
+RS_INFO = "/camera/color/camera_info"
+OAK_INFO = "/oak/rgb/camera_info"
+SQUARES_X, SQUARES_Y = 7, 5
+SQUARE_M, MARKER_M = 0.030, 0.022
+
+
+@dataclass
+class Detection:
+    time: float  # rosbag receipt time in seconds, NOT the image header stamp
+    corners: np.ndarray
+    ids: np.ndarray
+    board_to_camera: np.ndarray
+    rms: float
+    image: np.ndarray
+    stable: bool = False
+
+
+def board_definition():
+    aruco = cv2.aruco
+    dictionary = aruco.Dictionary_get(aruco.DICT_4X4_50)
+    board = aruco.CharucoBoard_create(SQUARES_X, SQUARES_Y, SQUARE_M, MARKER_M, dictionary)
+    return dictionary, board
+
+
+def image_array(msg):
+    if msg.encoding not in ("rgb8", "bgr8", "mono8"):
+        raise ValueError(f"Unsupported image encoding {msg.encoding!r}")
+    channels = 1 if msg.encoding == "mono8" else 3
+    raw = np.frombuffer(msg.data, np.uint8).reshape(msg.height, msg.step)
+    pixels = raw[:, :msg.width * channels].copy()
+    if channels == 1:
+        return cv2.cvtColor(pixels, cv2.COLOR_GRAY2BGR)
+    pixels = pixels.reshape(msg.height, msg.width, 3)
+    return cv2.cvtColor(pixels, cv2.COLOR_RGB2BGR) if msg.encoding == "rgb8" else pixels
+
+
+def camera_matrix(info):
+    if info.width < 1 or info.height < 1 or info.k[0] <= 0 or info.k[4] <= 0:
+        raise ValueError("CameraInfo is missing calibrated intrinsics")
+    return np.array(info.k, dtype=np.float64).reshape(3, 3), np.array(info.d, dtype=np.float64)
+
+
+def detect(msg, receipt_time, info, dictionary, board, min_corners):
+    image = image_array(msg)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    markers, marker_ids, _ = cv2.aruco.detectMarkers(gray, dictionary)
+    if marker_ids is None or len(marker_ids) < 2:
+        return None
+    n, corners, ids = cv2.aruco.interpolateCornersCharuco(markers, marker_ids, gray, board)
+    if n is None or n < min_corners or ids is None:
+        return None
+    ids = ids.flatten().astype(int)
+    obj = np.asarray(board.chessboardCorners, np.float64)[ids]
+    k, d = camera_matrix(info)
+    ok, rvec, tvec = cv2.solvePnP(obj, corners.reshape(-1, 2), k, d,
+                                   flags=cv2.SOLVEPNP_ITERATIVE)
+    if not ok or tvec[2, 0] <= 0:
+        return None
+    projected, _ = cv2.projectPoints(obj, rvec, tvec, k, d)
+    rms = float(np.sqrt(np.mean(np.sum((projected.reshape(-1, 2) -
+                                       corners.reshape(-1, 2)) ** 2, axis=1))))
+    pose = np.eye(4)
+    pose[:3, :3] = cv2.Rodrigues(rvec)[0]
+    pose[:3, 3] = tvec.flatten()
+    return Detection(receipt_time, corners.reshape(-1, 2), ids, pose, rms, image)
+
+
+def rotation_deg(a, b):
+    rotation = a[:3, :3] @ b[:3, :3].T
+    cosine = np.clip((np.trace(rotation) - 1) / 2, -1, 1)
+    return float(np.degrees(np.arccos(cosine)))
+
+
+def mark_stationary(samples, max_motion_m=0.025, max_rotation_deg=3.0):
+    for i in range(1, len(samples) - 1):
+        center = samples[i]
+        neighbors = [samples[i - 1], samples[i + 1]]
+        center.stable = all(
+            0 < abs(center.time - n.time) < 0.85 and
+            np.linalg.norm(center.board_to_camera[:3, 3] - n.board_to_camera[:3, 3])
+            < max_motion_m and
+            rotation_deg(center.board_to_camera, n.board_to_camera) < max_rotation_deg
+            for n in neighbors
+        )
+
+
+def load_bag(path, stride, min_corners):
+    manifest_path = path / "capture_manifest.yaml"
+    triggered = False
+    if manifest_path.is_file():
+        with manifest_path.open() as f:
+            manifest = yaml.safe_load(f)
+        triggered = manifest.get("mode") == "triggered_stationary_pairs"
+    if triggered:
+        stride = 1  # every explicitly captured frame is one candidate pose
+    reader = rosbag2_py.SequentialReader()
+    reader.open(rosbag2_py.StorageOptions(uri=str(path), storage_id="mcap"),
+                rosbag2_py.ConverterOptions("cdr", "cdr"))
+    dictionary, board = board_definition()
+    infos = {}
+    samples = defaultdict(list)
+    counts = defaultdict(int)
+    pending = defaultdict(list)
+
+    def process_image(topic, raw, stamp_ns):
+        info_topic = RS_INFO if topic == RS_IMAGE else OAK_INFO
+        msg = deserialize_message(raw, Image)
+        info = infos[info_topic]
+        if (msg.width, msg.height) != (info.width, info.height):
+            raise ValueError(f"{topic}: image dimensions do not match CameraInfo")
+        item = detect(msg, stamp_ns / 1e9, info, dictionary, board, min_corners)
+        if item and item.rms < 3.0:
+            samples[topic].append(item)
+
+    for topic, raw, stamp_ns in bag_messages(reader):
+        if topic in (RS_INFO, OAK_INFO):
+            if topic not in infos:
+                infos[topic] = deserialize_message(raw, CameraInfo)
+                image_topic = RS_IMAGE if topic == RS_INFO else OAK_IMAGE
+                for image_data, image_stamp in pending.pop(image_topic, []):
+                    process_image(image_topic, image_data, image_stamp)
+        elif topic in (RS_IMAGE, OAK_IMAGE):
+            counts[topic] += 1
+            info_topic = RS_INFO if topic == RS_IMAGE else OAK_INFO
+            if counts[topic] % stride:
+                continue
+            if info_topic in infos:
+                process_image(topic, raw, stamp_ns)
+            else:
+                if len(pending[topic]) >= 10:
+                    raise ValueError(f"No CameraInfo received for {topic} before ten images")
+                pending[topic].append((raw, stamp_ns))
+    if set(infos) != {RS_INFO, OAK_INFO} or not samples[RS_IMAGE] or not samples[OAK_IMAGE]:
+        raise ValueError("Bag needs both RGB streams and both CameraInfo topics with visible ChArUco")
+    if triggered:
+        for stream in samples.values():
+            for detection in stream:
+                detection.stable = True  # accepted at the operator's stationary-board click
+    else:
+        mark_stationary(samples[RS_IMAGE])
+        mark_stationary(samples[OAK_IMAGE])
+    return infos, samples, counts, board, triggered
+
+
+def bag_messages(reader):
+    while reader.has_next():
+        yield reader.read_next()
+
+
+def candidate_pairs(samples, triggered=False, max_gap=0.18, min_spacing=0.8):
+    oak = [x for x in samples[OAK_IMAGE] if x.stable]
+    rs = [x for x in samples[RS_IMAGE] if x.stable]
+    if not oak or not rs:
+        return []
+    oak_times = np.array([x.time for x in oak])
+    proposals = []
+    used = set()
+    for a in rs:
+        idx = int(np.argmin(np.abs(oak_times - a.time)))
+        b = oak[idx]
+        if abs(a.time - b.time) <= max_gap and (not triggered or idx not in used):
+            proposals.append((a, b))
+            used.add(idx)
+    if triggered:
+        return proposals  # one click per manually selected pose, no time-window thinning
+    # One observation per time window: avoid counting many copies of one pose
+    # as independent evidence. Prefer crisp corners in both cameras.
+    windows = {}
+    start = proposals[0][0].time if proposals else 0
+    for a, b in proposals:
+        index = int((a.time - start) / min_spacing)
+        if index not in windows or a.rms + b.rms < sum(x.rms for x in windows[index]):
+            windows[index] = (a, b)
+    return [windows[k] for k in sorted(windows)]
+
+
+def relative_pose(a, b):
+    # T_rs_board * inv(T_oak_board) = T_rs_oak (optical frames).
+    return a.board_to_camera @ np.linalg.inv(b.board_to_camera)
+
+
+def mean_pose(poses):
+    rotation = sum((x[:3, :3] for x in poses), np.zeros((3, 3)))
+    u, _, vt = np.linalg.svd(rotation)
+    correction = np.diag([1., 1., np.linalg.det(u @ vt)])
+    result = np.eye(4)
+    result[:3, :3] = u @ correction @ vt
+    result[:3, 3] = np.median([x[:3, 3] for x in poses], axis=0)
+    return result
+
+
+def pose_error(reference, candidate):
+    return (float(np.linalg.norm(reference[:3, 3] - candidate[:3, 3])),
+            rotation_deg(reference, candidate))
+
+
+def robust_fit(pairs):
+    transforms = [relative_pose(a, b) for a, b in pairs]
+    keep = np.ones(len(transforms), dtype=bool)
+    for _ in range(6):
+        center = mean_pose([x for x, selected in zip(transforms, keep) if selected])
+        errors = np.array([pose_error(center, x) for x in transforms])
+        proposed = (errors[:, 0] <= 0.04) & (errors[:, 1] <= 5.0)
+        if proposed.sum() < 4:
+            raise ValueError("Fewer than four consistent board poses; record more stationary views")
+        if np.array_equal(proposed, keep):
+            break
+        keep = proposed
+    return mean_pose([x for x, selected in zip(transforms, keep) if selected]), keep
+
+
+def cross_projection(reference, a, b, board, info_rs, info_oak):
+    """Project OAK's measured board into RealSense and vice versa."""
+    obj = np.asarray(board.chessboardCorners, np.float64)
+    common = np.intersect1d(a.ids, b.ids)
+    def one(source, target, transform, info):
+        k, d = camera_matrix(info)
+        mapped = transform @ source.board_to_camera
+        ids = common
+        rvec = cv2.Rodrigues(mapped[:3, :3])[0]
+        pred, _ = cv2.projectPoints(obj[ids], rvec, mapped[:3, 3], k, d)
+        observed = np.array(
+            [target.corners[np.flatnonzero(target.ids == i)[0]] for i in ids])
+        return float(np.sqrt(np.mean(np.sum((pred.reshape(-1, 2) - observed) ** 2, axis=1)))), pred.reshape(-1, 2), observed
+    rs = one(b, a, reference, info_rs)
+    oak = one(a, b, np.linalg.inv(reference), info_oak)
+    return rs, oak, common
+
+
+def statistics(values):
+    if not values:
+        return {}
+    return {"median": float(np.median(values)), "p90": float(np.percentile(values, 90)),
+            "max": float(max(values))}
+
+
+def diverse_pose_count(pairs):
+    """Repeated clicks on one board placement are not varied viewpoints."""
+    selected = []
+    for rs, _ in pairs:
+        pose = rs.board_to_camera
+        if all(np.linalg.norm(pose[:3, 3] - other[:3, 3]) > 0.04 or
+               rotation_deg(pose, other) > 5.0 for other in selected):
+            selected.append(pose)
+    return len(selected)
+
+
+def quality_check(candidate_count, diversity, held_out):
+    """Conservative screening limits; a human still inspects the overlays."""
+    reasons = []
+    if candidate_count < 20 or held_out["pairs"] < 4:
+        reasons.append("Need >=20 paired poses and >=4 held-out pairs")
+    if diversity < 12:
+        reasons.append("Need >=12 varied board viewpoints (4 cm or 5 degree change)")
+    if held_out["translation_error_mm"]["median"] > 10:
+        reasons.append("Held-out median translation spread exceeds 10 mm")
+    if held_out["rotation_error_deg"]["median"] > 1:
+        reasons.append("Held-out median rotation spread exceeds 1 degree")
+    if held_out["realsense_cross_px"]["p90"] > 5:
+        reasons.append("Held-out RealSense cross-projection p90 exceeds 5 px")
+    if held_out["oak_cross_px"]["p90"] > 8:
+        reasons.append("Held-out OAK cross-projection p90 exceeds 8 px")
+    return {"ready_for_manual_tf_review": not reasons, "reasons": reasons}
+
+
+def evaluate(pairs, pose, board, infos, overlay_dir=None, max_overlays=6):
+    translations, angles, rs_pixels, oak_pixels = [], [], [], []
+    if overlay_dir:
+        overlay_dir.mkdir(parents=True, exist_ok=True)
+    saved = 0
+    for idx, (a, b) in enumerate(pairs):
+        dt, angle = pose_error(pose, relative_pose(a, b))
+        translations.append(dt * 1000)
+        angles.append(angle)
+        rs, oak, common = cross_projection(pose, a, b, board, infos[RS_INFO], infos[OAK_INFO])
+        rs_pixels.append(rs[0])
+        oak_pixels.append(oak[0])
+        if overlay_dir and saved < max_overlays and len(common) >= 6:
+            for label, observation, result in (("realsense", a, rs), ("oak", b, oak)):
+                canvas = observation.image.copy()
+                for predicted, measured in zip(result[1], result[2]):
+                    cv2.circle(canvas, tuple(np.round(measured).astype(int)), 4, (0, 255, 0), -1)
+                    cv2.drawMarker(canvas, tuple(np.round(predicted).astype(int)), (0, 0, 255),
+                                   cv2.MARKER_CROSS, 10, 2)
+                cv2.putText(canvas, f"green=detected red=predicted; RMS={result[0]:.2f}px",
+                            (12, 28), cv2.FONT_HERSHEY_SIMPLEX, .65, (255, 255, 255), 2)
+                cv2.imwrite(str(overlay_dir / f"{saved:02d}_{label}.png"), canvas)
+            saved += 1
+    return {"pairs": len(pairs), "translation_error_mm": statistics(translations),
+            "rotation_error_deg": statistics(angles), "realsense_cross_px": statistics(rs_pixels),
+            "oak_cross_px": statistics(oak_pixels)}
+
+
+def quaternion_xyzw(rotation):
+    # OpenCV provides the Rodrigues rotation; use the standard matrix->quaternion conversion.
+    m = rotation
+    q = np.array([np.sqrt(max(0, 1 + m[0, 0] - m[1, 1] - m[2, 2])),
+                  np.sqrt(max(0, 1 - m[0, 0] + m[1, 1] - m[2, 2])),
+                  np.sqrt(max(0, 1 - m[0, 0] - m[1, 1] + m[2, 2])),
+                  np.sqrt(max(0, 1 + m[0, 0] + m[1, 1] + m[2, 2]))]) / 2
+    q[0] *= np.sign(m[2, 1] - m[1, 2]) or 1
+    q[1] *= np.sign(m[0, 2] - m[2, 0]) or 1
+    q[2] *= np.sign(m[1, 0] - m[0, 1]) or 1
+    return (q / np.linalg.norm(q)).tolist()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("bag", type=Path, help="Directory containing metadata.yaml and MCAP")
+    parser.add_argument("--result", type=Path, help="Verify an existing calibration.yaml instead of fitting")
+    parser.add_argument("--output-dir", type=Path, help="Defaults to <bag>/charuco_calibration")
+    parser.add_argument("--stride", type=int, default=3, help="Analyze every Nth frame per camera")
+    parser.add_argument("--min-corners", type=int, default=8)
+    args = parser.parse_args()
+    if args.stride < 1 or args.min_corners < 6:
+        parser.error("stride must be >=1 and min-corners >=6")
+    if not (args.bag / "metadata.yaml").is_file():
+        parser.error(f"Not a bag directory: {args.bag}")
+    output = args.output_dir or args.bag / "charuco_calibration"
+    infos, samples, counts, board, triggered = load_bag(args.bag, args.stride, args.min_corners)
+    pairs = candidate_pairs(samples, triggered=triggered)
+    print("Images:", dict(counts), "board detections:",
+          {k: len(v) for k, v in samples.items()}, "stationary paired poses:", len(pairs))
+    if len(pairs) < 10:
+        raise SystemExit("Need >=10 stationary paired observations; inspect board visibility and sampling")
+    if args.result:
+        with args.result.open() as f:
+            result = yaml.safe_load(f)
+        if result["parent_frame"] != infos[RS_INFO].header.frame_id or result["child_frame"] != infos[OAK_INFO].header.frame_id:
+            raise ValueError("Calibration frame names do not match bag CameraInfo")
+        transform = np.asarray(result["transform_matrix"], dtype=np.float64)
+        if transform.shape != (4, 4) or not np.allclose(transform[3], [0, 0, 0, 1]):
+            raise ValueError("Invalid transform matrix")
+        output.mkdir(parents=True, exist_ok=True)
+        report = evaluate(pairs, transform, board, infos, output / "verify_overlays")
+        print("Verification (all stationary pairs):", yaml.safe_dump(report, sort_keys=False))
+        with (output / "verification.yaml").open("w") as f:
+            yaml.safe_dump(report, f, sort_keys=False)
+        return
+
+    # Hold out one in five time windows. Fit the transform using the remaining poses.
+    training = [pair for i, pair in enumerate(pairs) if i % 5 != 0]
+    held_out = [pair for i, pair in enumerate(pairs) if i % 5 == 0]
+    if len(training) < 8 or len(held_out) < 2:
+        raise SystemExit("Not enough independent poses for training and held-out verification")
+    pose, inliers = robust_fit(training)
+    output.mkdir(parents=True, exist_ok=True)
+    train_report = evaluate([p for p, keep in zip(training, inliers) if keep],
+                            pose, board, infos)
+    held_report = evaluate(held_out, pose, board, infos, output / "heldout_overlays")
+    diversity = diverse_pose_count(pairs)
+    quality = quality_check(len(pairs), diversity, held_report)
+    result = {
+        "parent_frame": infos[RS_INFO].header.frame_id,
+        "child_frame": infos[OAK_INFO].header.frame_id,
+        "translation_m": pose[:3, 3].tolist(),
+        "rotation_xyzw": quaternion_xyzw(pose[:3, :3]),
+        "transform_matrix": pose.tolist(),
+        "target": {"squares_x": SQUARES_X, "squares_y": SQUARES_Y,
+                   "square_m": SQUARE_M, "marker_m": MARKER_M,
+                   "dictionary": "DICT_4X4_50"},
+        "bag": str(args.bag.resolve()),
+        "pairing": "recorder receipt times; stationary board; NOT header stamp synchronization",
+        "sample_stride": 1 if triggered else args.stride,
+        "triggered_capture": triggered,
+        "candidate_pairs": len(pairs),
+        "varied_board_viewpoints": diversity,
+        "training_inliers": int(inliers.sum()),
+        "training": train_report,
+        "held_out": held_report,
+        "quality": quality,
+    }
+    path = output / "calibration.yaml"
+    with path.open("w") as f:
+        yaml.safe_dump(result, f, sort_keys=False)
+    print(f"Proposed {result['parent_frame']} -> {result['child_frame']}: {path}")
+    print("Held-out checks:", yaml.safe_dump(held_report, sort_keys=False))
+    print("Quality verdict:", yaml.safe_dump(quality, sort_keys=False))
+    print("Inspect heldout_overlays (green detected, red predicted). Do not publish TF until verified.")
+
+
+if __name__ == "__main__":
+    main()

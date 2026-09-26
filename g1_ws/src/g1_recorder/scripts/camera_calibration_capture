@@ -1,0 +1,354 @@
+#!/usr/bin/env python3
+"""RViz preview and manually triggered paired ChArUco images in a local MCAP bag."""
+
+import argparse
+from datetime import datetime
+import os
+from pathlib import Path
+import subprocess
+import threading
+import time
+import tkinter as tk
+from tkinter import messagebox
+
+
+RS_IMAGE = "/camera/color/image_raw"
+RS_INFO = "/camera/color/camera_info"
+OAK_IMAGE = "/oak/rgb/image_raw"
+OAK_INFO = "/oak/rgb/camera_info"
+RGB_TOPICS = (RS_IMAGE, RS_INFO, OAK_IMAGE, OAK_INFO)
+MAX_IMAGE_AGE_S = 0.5
+MAX_PAIR_GAP_S = 0.2
+MIN_COMMON_CORNERS = 8
+RS_OVERLAY = "/g1_calibration/realsense/charuco_overlay"
+OAK_OVERLAY = "/g1_calibration/oak/charuco_overlay"
+
+
+def configure_dds(robot_ip):
+    """Bind this laptop's ROS graph to its wired route to the G1, if unset."""
+    os.environ.setdefault("RMW_IMPLEMENTATION", "rmw_cyclonedds_cpp")
+    os.environ.setdefault("ROS_DOMAIN_ID", "0")
+    if "CYCLONEDDS_URI" in os.environ:
+        return
+    route = subprocess.check_output(
+        ["ip", "route", "get", robot_ip], text=True, timeout=5
+    ).split()
+    if "dev" not in route:
+        raise RuntimeError(f"No wired route to {robot_ip}; connect the laptop to the G1")
+    interface = route[route.index("dev") + 1]
+    if interface in ("lo", "docker0") or interface.startswith(("wl", "tailscale")):
+        raise RuntimeError(f"Route to {robot_ip} uses {interface}; connect via wired Ethernet")
+    os.environ["CYCLONEDDS_URI"] = (
+        '<CycloneDDS><Domain Id="any"><General><Interfaces>'
+        f'<NetworkInterface name="{interface}" priority="default" multicast="default"/>'
+        '</Interfaces><AllowMulticast>spdp</AllowMulticast></General></Domain></CycloneDDS>'
+    )
+
+
+def detect_board(image):
+    """Return the BGR image and ChArUco corner IDs/locations for the known board."""
+    import cv2
+    import numpy as np
+
+    if image.encoding not in ("rgb8", "bgr8", "mono8"):
+        raise ValueError(f"Unsupported RGB encoding {image.encoding!r}")
+    channels = 1 if image.encoding == "mono8" else 3
+    pixels = np.frombuffer(image.data, dtype=np.uint8).reshape(image.height, image.step)
+    pixels = pixels[:, :image.width * channels]
+    if channels == 3:
+        pixels = pixels.reshape(image.height, image.width, 3)
+        bgr = cv2.cvtColor(pixels, cv2.COLOR_RGB2BGR) if image.encoding == "rgb8" else pixels.copy()
+    else:
+        bgr = cv2.cvtColor(pixels, cv2.COLOR_GRAY2BGR)
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    aruco = cv2.aruco
+    dictionary = aruco.Dictionary_get(aruco.DICT_4X4_50)
+    board = aruco.CharucoBoard_create(7, 5, 0.030, 0.022, dictionary)
+    markers, ids, _ = aruco.detectMarkers(gray, dictionary)
+    if ids is None:
+        return bgr, {}
+    count, corners, corner_ids = aruco.interpolateCornersCharuco(markers, ids, gray, board)
+    if not count or corner_ids is None:
+        return bgr, {}
+    return bgr, {int(i): tuple(map(float, pt))
+                 for i, pt in zip(corner_ids.flatten(), corners.reshape(-1, 2))}
+
+
+def charuco_count(image):
+    return len(detect_board(image)[1])
+
+
+def render_pair(rs_image, oak_image, gap_s):
+    """Draw identical board IDs in green in BOTH images; unmatched IDs in amber."""
+    import cv2
+    from sensor_msgs.msg import Image
+
+    rs_bgr, rs_corners = detect_board(rs_image)
+    oak_bgr, oak_corners = detect_board(oak_image)
+    common = set(rs_corners) & set(oak_corners) if gap_s <= MAX_PAIR_GAP_S else set()
+
+    def annotated(source, canvas, corners, other):
+        canvas = canvas.copy()
+        for corner_id, (x, y) in corners.items():
+            matching = corner_id in common
+            color = (0, 210, 0) if matching else (0, 180, 255)
+            pos = (round(x), round(y))
+            cv2.circle(canvas, pos, 5, color, 2)
+            cv2.putText(canvas, str(corner_id), (pos[0] + 6, pos[1] - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX, .45, color, 2)
+        cv2.rectangle(canvas, (0, 0), (min(canvas.shape[1], 700), 53), (0, 0, 0), -1)
+        cv2.putText(canvas, f"GREEN=shared ID ({len(common)}/24)  AMBER=one camera",
+                    (7, 20), cv2.FONT_HERSHEY_SIMPLEX, .48, (255, 255, 255), 1)
+        cv2.putText(canvas, f"this={len(corners)} other={len(other)} gap={gap_s*1000:.0f}ms"
+                    + ("  NOT PAIRED" if gap_s > MAX_PAIR_GAP_S else ""),
+                    (7, 42), cv2.FONT_HERSHEY_SIMPLEX, .48, (255, 255, 255), 1)
+        result = Image()
+        result.header = source.header
+        result.height, result.width = canvas.shape[:2]
+        result.encoding = "bgr8"
+        result.is_bigendian = 0
+        result.step = result.width * 3
+        result.data = canvas.tobytes()
+        return result
+
+    return (annotated(rs_image, rs_bgr, rs_corners, oak_corners),
+            annotated(oak_image, oak_bgr, oak_corners, rs_corners),
+            len(rs_corners), len(oak_corners), len(common))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-dir", type=Path, default=Path.home() / "g1_camera_calibration")
+    parser.add_argument("--robot-ip", default="192.168.123.164")
+    args = parser.parse_args()
+    configure_dds(args.robot_ip)
+
+    import rclpy
+    import rosbag2_py
+    from ament_index_python.packages import get_package_share_directory
+    from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+    from rclpy.serialization import serialize_message
+    from sensor_msgs.msg import CameraInfo, Image
+    from tf2_msgs.msg import TFMessage
+    import yaml
+
+    share = Path(get_package_share_directory("g1_recorder"))
+    rclpy.init()
+    node = rclpy.create_node("g1_camera_calibration_capture")
+    latest = {}
+    static_transforms = {}
+    data_lock = threading.Lock()
+
+    def cache(topic):
+        def callback(msg):
+            with data_lock:
+                latest[topic] = (time.monotonic(), time.time_ns(), msg)
+        return callback
+
+    def on_tf(msg):
+        with data_lock:
+            for transform in msg.transforms:
+                static_transforms[transform.child_frame_id] = transform
+
+    qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
+    static_qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE,
+                            durability=DurabilityPolicy.TRANSIENT_LOCAL)
+    subscriptions = [node.create_subscription(Image, topic, cache(topic), qos)
+                     for topic in (RS_IMAGE, OAK_IMAGE)]
+    subscriptions += [node.create_subscription(CameraInfo, topic, cache(topic), qos)
+                      for topic in (RS_INFO, OAK_INFO)]
+    subscriptions.append(node.create_subscription(TFMessage, "/tf_static", on_tf, static_qos))
+    overlay_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE)
+    rs_overlay_pub = node.create_publisher(Image, RS_OVERLAY, overlay_qos)
+    oak_overlay_pub = node.create_publisher(Image, OAK_OVERLAY, overlay_qos)
+    spin_thread = threading.Thread(target=rclpy.spin, args=(node,), daemon=True)
+    spin_thread.start()
+
+    try:
+        rviz = subprocess.Popen(["rviz2", "-d", str(share / "rviz" / "camera_calibration.rviz")])
+    except OSError:
+        rclpy.shutdown()
+        node.destroy_node()
+        raise
+
+    root = tk.Tk()
+    root.title("G1 two-camera calibration capture")
+    root.geometry("600x285")
+    status = tk.StringVar(value="Waiting for both camera streams...")
+    destination = tk.StringVar(value="No bag started")
+    count_label = tk.StringVar(value="0 poses captured; aim for 40–60 distinct stationary poses")
+    tk.Label(root, text="Hold the 7×5 ChArUco board still in BOTH RViz images before each click.",
+             wraplength=570).pack(pady=9)
+    tk.Label(root, textvariable=status, wraplength=570).pack(pady=5)
+    tk.Label(root, textvariable=destination, wraplength=570).pack(pady=5)
+    tk.Label(root, textvariable=count_label).pack(pady=5)
+    controls = tk.Frame(root)
+    controls.pack(pady=12)
+    start_button = tk.Button(controls, text="Start session", width=15)
+    start_button.pack(side=tk.LEFT, padx=7)
+    shot_button = tk.Button(controls, text="Capture pose", width=15, state=tk.DISABLED)
+    shot_button.pack(side=tk.LEFT, padx=7)
+    stop_button = tk.Button(controls, text="Finish bag", width=15, state=tk.DISABLED)
+    stop_button.pack(side=tk.LEFT, padx=7)
+    tk.Label(root, text="Move the board, hold it still ~1 second, then click Capture pose again.",
+             wraplength=570).pack()
+
+    writer = None
+    bag_path = None
+    captures = []
+    last_capture = 0.0
+    last_preview = (0, 0)
+
+    def ready():
+        now = time.monotonic()
+        with data_lock:
+            missing = [topic for topic in RGB_TOPICS
+                       if topic not in latest or now - latest[topic][0] > MAX_IMAGE_AGE_S]
+        return missing
+
+    def start():
+        nonlocal writer, bag_path, captures, last_capture
+        missing = ready()
+        if missing:
+            messagebox.showerror("Cameras unavailable", "Missing or stale:\n" + "\n".join(missing))
+            return
+        args.output_dir.expanduser().mkdir(parents=True, exist_ok=True)
+        bag_path = (args.output_dir.expanduser().resolve() /
+                    datetime.now().strftime("camera_calibration_triggered_%Y%m%d_%H%M%S_%f"))
+        try:
+            writer = rosbag2_py.SequentialWriter()
+            writer.open(rosbag2_py.StorageOptions(uri=str(bag_path), storage_id="mcap"),
+                        rosbag2_py.ConverterOptions("cdr", "cdr"))
+            for topic, typ in [(RS_IMAGE, "sensor_msgs/msg/Image"),
+                               (OAK_IMAGE, "sensor_msgs/msg/Image"),
+                               (RS_INFO, "sensor_msgs/msg/CameraInfo"),
+                               (OAK_INFO, "sensor_msgs/msg/CameraInfo"),
+                               ("/tf_static", "tf2_msgs/msg/TFMessage")]:
+                writer.create_topic(rosbag2_py.TopicMetadata(
+                    name=topic, type=typ, serialization_format="cdr"))
+        except Exception as exc:
+            writer = None
+            messagebox.showerror("Could not start bag", str(exc))
+            return
+        captures = []
+        last_capture = 0.0
+        count_label.set("0 poses captured; aim for 40–60 distinct stationary poses")
+        destination.set(f"Bag: {bag_path}")
+        status.set("Session started. Hold board still, then click Capture pose.")
+        start_button.config(state=tk.DISABLED)
+        stop_button.config(state=tk.NORMAL)
+
+    def capture():
+        nonlocal last_capture
+        if writer is None:
+            return
+        missing = ready()
+        if missing:
+            status.set("No capture — stale: " + ", ".join(missing))
+            return
+        with data_lock:
+            selected = {topic: latest[topic] for topic in RGB_TOPICS}
+            tf_list = list(static_transforms.values())
+        rs, oak = selected[RS_IMAGE], selected[OAK_IMAGE]
+        gap = abs(rs[0] - oak[0])
+        if gap > MAX_PAIR_GAP_S:
+            status.set(f"No capture — camera receipt gap {gap:.2f}s exceeds {MAX_PAIR_GAP_S}s")
+            return
+        if time.monotonic() - last_capture < 1.0:
+            status.set("No capture — wait at least one second before the next board pose")
+            return
+        try:
+            _, rs_corners = detect_board(rs[2])
+            _, oak_corners = detect_board(oak[2])
+            corners_rs, corners_oak = len(rs_corners), len(oak_corners)
+            common = len(rs_corners.keys() & oak_corners.keys())
+            if common < MIN_COMMON_CORNERS:
+                status.set(f"No capture — shared corners {common} (<{MIN_COMMON_CORNERS}); RealSense {corners_rs}, OAK {corners_oak}")
+                return
+            # CameraInfo must precede the first image for a sequential bag reader.
+            for topic in (RS_INFO, OAK_INFO, RS_IMAGE, OAK_IMAGE):
+                _, receipt_ns, msg = selected[topic]
+                writer.write(topic, serialize_message(msg), receipt_ns)
+            if tf_list and not captures:
+                writer.write("/tf_static", serialize_message(TFMessage(transforms=tf_list)),
+                             min(rs[1], oak[1]))
+            captures.append({"pose": len(captures) + 1, "record_time_ns": min(rs[1], oak[1]),
+                             "pair_receipt_gap_ms": round(gap * 1000, 1),
+                             "realsense_corners": corners_rs, "oak_corners": corners_oak,
+                             "shared_corners": common})
+            last_capture = time.monotonic()
+        except Exception as exc:
+            status.set(f"Capture failed: {exc}; check the bag before retrying")
+            return
+        count_label.set(f"{len(captures)} poses captured; aim for 40–60 distinct stationary poses")
+        status.set(f"Saved pose {len(captures)} ({common} shared corners). Move board.")
+
+    def finish():
+        nonlocal writer
+        if writer is None:
+            return
+        shot_button.config(state=tk.DISABLED)
+        stop_button.config(state=tk.DISABLED)
+        status.set("Finalizing MCAP...")
+        writer = None  # rosbag2_py finalizes metadata and closes MCAP when destroyed
+        manifest = {"mode": "triggered_stationary_pairs", "poses": captures,
+                    "board": "7x5 squares, 30 mm / 22 mm, DICT_4X4_50",
+                    "pairing": "laptop image receipt times; camera header stamps are not synchronized"}
+        with (bag_path / "capture_manifest.yaml").open("w") as f:
+            yaml.safe_dump(manifest, f, sort_keys=False)
+        status.set(f"Finished {len(captures)} poses — verify with ros2 bag info")
+        destination.set(f"Saved bag: {bag_path}")
+        start_button.config(state=tk.NORMAL)
+
+    def close():
+        if writer is not None:
+            finish()
+        if rviz.poll() is None:
+            rviz.terminate()
+        rclpy.shutdown()
+        spin_thread.join(timeout=2)
+        node.destroy_node()
+        root.destroy()
+
+    def refresh():
+        nonlocal last_preview
+        if rviz.poll() is not None:
+            status.set("RViz closed; restart the launcher to preview both cameras")
+            shot_button.config(state=tk.DISABLED)
+            start_button.config(state=tk.DISABLED)
+        else:
+            missing = ready()
+            if not missing:
+                with data_lock:
+                    rs, oak = latest[RS_IMAGE], latest[OAK_IMAGE]
+                current = (rs[1], oak[1])
+                if current != last_preview and (rs_overlay_pub.get_subscription_count() or
+                                                oak_overlay_pub.get_subscription_count()):
+                    try:
+                        rs_view, oak_view, _, _, _ = render_pair(
+                            rs[2], oak[2], abs(rs[0] - oak[0]))
+                        rs_overlay_pub.publish(rs_view)
+                        oak_overlay_pub.publish(oak_view)
+                        last_preview = current
+                    except Exception as exc:
+                        status.set(f"Overlay error: {exc}")
+            if writer is None:
+                start_button.config(state=tk.DISABLED if missing else tk.NORMAL)
+                if missing:
+                    status.set("Waiting for: " + ", ".join(missing))
+            else:
+                shot_button.config(state=tk.DISABLED if missing else tk.NORMAL)
+                if missing:
+                    status.set("Waiting for fresh frames: " + ", ".join(missing))
+        root.after(600, refresh)
+
+    start_button.config(command=start)
+    shot_button.config(command=capture)
+    stop_button.config(command=finish)
+    root.protocol("WM_DELETE_WINDOW", close)
+    refresh()
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()

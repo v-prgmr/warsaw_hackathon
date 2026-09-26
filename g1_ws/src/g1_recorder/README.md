@@ -326,6 +326,86 @@ database; save the database separately after stopping RTAB-Map cleanly. For fron
 experiments, preserve the explorer's `min_frontier_size` and the RViz configuration alongside the
 bag. Replay only on an **isolated DDS domain**, never on the robot's live domain 0.
 
+## Two-camera ChArUco preview and button-controlled capture
+
+With the RealSense and OAK-D ROS drivers already running on the G1, run this **on the wired laptop**
+(Humble, with `g1_recorder` built and `install/setup.bash` sourced):
+
+```bash
+ros2 run g1_recorder camera_calibration_capture
+```
+
+The launcher selects the laptop's wired route to `192.168.123.164` for CycloneDDS if
+`CYCLONEDDS_URI` is unset. It honors any existing DDS configuration; unset a stale URI first.
+It opens RViz with two live, annotated Image displays and a small capture window. Arrange the
+two RViz image docks side by side if they initially appear as tabs. Green circles and corner IDs
+mark the **same detected ChArUco corner IDs in both camera images**; amber marks IDs seen by only
+one camera. The top-left of each preview reports shared/individual counts and receipt-time gap.
+The overlays are published locally on `/g1_calibration/realsense/charuco_overlay` and
+`/g1_calibration/oak/charuco_overlay`, never on the robot's camera topics. Place the **7×5 ChArUco
+board (30 mm squares, 22 mm markers, DICT_4X4_50)** so its full
+pattern is sharp in both views. Click **Start session**. For each of **40–60 distinct poses**,
+hold the board still in both views for about a second, then click **Capture pose** once. The
+button checks that both images are fresh (<=0.5 s old, <=0.2 s apart by laptop receipt time)
+and have at least eight **shared ChArUco corner IDs**; it saves **one raw image pair** and both CameraInfo
+messages per click. Change the board position and angle between clicks. Click **Finish bag** and
+wait for it to finalize; closing the window also finalizes the bag. The buttons never start
+camera drivers or publish robot commands. RViz overlays run only for live feedback; the bag
+contains unannotated RGB pixels for accurate corner localization.
+
+The default MCAP directory is
+`~/g1_camera_calibration/camera_calibration_triggered_<timestamp>/`. It contains only the
+selected RGB pairs, matching CameraInfo, `/tf_static` if received, and
+`capture_manifest.yaml` with counts and receipt-time gaps. Override the output root with
+`--output-dir /path/to/bags`. This is a **camera-calibration** bag, not a canonical survey bag:
+it does not contain LiDAR, depth or robot state.
+
+Check the result with `ros2 bag info ~/g1_camera_calibration/<bag_name>` and verify that each
+of the four camera topics has **exactly the number of accepted pose clicks**. The OAK-D and
+RealSense header clocks differ by hundreds of seconds; triggered images are paired using laptop
+receipt times, **not** camera header stamps. Replay bags only in an isolated ROS domain (see Replay).
+
+When finished with the live session, close this launcher, stop both camera launch terminals and
+restore `video_hub_pc4` as described in `start_realsense.md`.
+
+### Offline ChArUco extrinsic calibration and verification
+
+Run these on the laptop with the robot off. The tool **reads the MCAP directly** with rosbag2_py:
+there is no bag playback or ROS topic publishing, so it cannot interfere with live TF. It uses
+the cameras' recorded factory intrinsics (`CameraInfo`), not an intrinsic recalibration. It
+estimates `camera_color_optical_frame -> oak_rgb_camera_optical_frame` from the shared board
+(7×5 squares; square 30 mm, marker 22 mm; DICT_4X4_50). Every training observation requires
+a stationary board in both views. Images are associated by the laptop recorder's receipt time;
+**do not pair camera header stamps** (the clocks differ by hundreds of seconds).
+
+```bash
+source /opt/ros/humble/setup.bash
+source ~/workspace/warsaw/g1_ws/install/setup.bash
+BAG=~/g1_camera_calibration/camera_calibration_20260926_164541_438585
+ros2 run g1_recorder calibrate_charuco_bag "$BAG"
+```
+
+The resulting `"$BAG/charuco_calibration/calibration.yaml"` contains a 4×4 optical-frame TF,
+translation in metres, quaternion (x,y,z,w), target dimensions, fit statistics and **held-out**
+pose and cross-projection errors. `heldout_overlays/*.png` show detected board corners in green
+and corners predicted through the TF in red. Inspect these images and errors before using the TF.
+`quality.ready_for_manual_tf_review` is only a screening verdict (at least 20 paired poses,
+12 varied viewpoints, 4 held-out pairs, and low held-out error); a failed check means the proposed TF should **not**
+be used yet. Capture more steady, diverse board poses and improve corner visibility in that case.
+Run a separate verification pass against all stationary observations with:
+
+```bash
+ros2 run g1_recorder calibrate_charuco_bag "$BAG" \
+  --result "$BAG/charuco_calibration/calibration.yaml"
+```
+
+It writes `verification.yaml` and `verify_overlays/*.png`. The TF direction is explicit:
+`T_camera_color_optical_frame_oak_rgb_camera_optical_frame` maps OAK optical coordinates into
+RealSense optical coordinates. This **proposed** extrinsic is not automatically broadcast; the
+robot's URDF and OAK driver frames must be chained carefully before adding a single mount TF
+(`torso_link -> oak-d-base-frame`) to `g1_sensors`. A camera-only bag contains neither the moving
+joint-state chain nor the `torso_link` reference needed to independently validate that mount TF.
+
 ## Record Takes
 
 Use unique output directories. Rosbag refuses to overwrite an existing directory.

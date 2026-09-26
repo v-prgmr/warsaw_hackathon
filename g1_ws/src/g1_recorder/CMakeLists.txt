@@ -9,7 +9,8 @@ install(
 )
 
 install(
-  PROGRAMS scripts/discover_sensors.sh scripts/capture_frontier_snapshot
+  PROGRAMS scripts/discover_sensors.sh scripts/camera_calibration_capture
+           scripts/calibrate_charuco_bag scripts/capture_frontier_snapshot
   DESTINATION lib/${PROJECT_NAME}
 )
 
