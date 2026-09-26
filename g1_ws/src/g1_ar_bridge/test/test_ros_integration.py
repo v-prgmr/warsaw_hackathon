@@ -226,11 +226,11 @@ async def lens_session():
 
 
 @pytest.fixture
-def launched():
+def launched(tmp_path):
     robot = FakeRobot()
     proc = subprocess.Popen(
         ["ros2", "launch", "g1_ar_bridge", "ar_bridge.launch.py", f"tag_black_size_m:={TAG}",
-         f"port:={PORT}"], start_new_session=True)
+         f"port:={PORT}", f"record_dir:={tmp_path}"], start_new_session=True)
     try:
         yield robot
     finally:

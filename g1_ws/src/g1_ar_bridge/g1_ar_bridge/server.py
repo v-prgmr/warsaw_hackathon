@@ -34,6 +34,7 @@ from .annotations import signature, to_wire_args
 from .apriltag import TagDetector
 from .geometry import (FLIP_YZ, ar_marker_pose, ar_marker_to_T, inv_T, level_ros_pose,
                        pose_to_T, transform_points)
+from .recorder import RegistrationRecorder
 
 NAV_DISABLED = "Glasses navigation off (safety)"
 ESTOP_DISABLED = "Use the robot remote's e-stop"
@@ -62,6 +63,7 @@ class BridgeConfig:
     lidar_min_height_m: float = 0.05              # above the floor: hides the floor itself
     lidar_max_height_m: float = 2.2
     status_period_s: float = 2.0                  # registration heartbeat (Lens times out 10 s)
+    record_dir: str = ""                          # record AprilTag registrations here ("" = off)
 
 
 class ArBridgeServer:
@@ -77,6 +79,8 @@ class ArBridgeServer:
         self.request_ids = itertools.count(1)
         self._warned = set()
         self._last_error = (None, 0.0)
+        self.recorder = (RegistrationRecorder(self.cfg.record_dir, log)
+                         if self.cfg.record_dir else None)
         self.reset()
 
     # --- state -----------------------------------------------------------------------------
@@ -305,6 +309,8 @@ class ArBridgeServer:
                 self.log(f"[ar_bridge] AprilTag registration started (tag {self.cfg.tag_id}, "
                          f"{self.cfg.tag_black_size_m} m); robot anchor "
                          f"{'present' if anchor is not None else 'NOT visible yet'}")
+                if self.recorder:
+                    self.recorder.start(self.cfg, anchor)
                 await self.broadcast(P.registration_status(
                     "april_tag", self.tag_prompt(), mode, tag_visible=False, progress=0))
             else:
@@ -313,13 +319,22 @@ class ArBridgeServer:
             if self.session is not None:
                 self.log(f"[ar_bridge] registration stopped by the glasses "
                          f"({self.session['mode']}, e.g. Skip/Back)")
+                self.record_event("stopped", diag=self.session.get("diag"))
             self.session = None
             await self.broadcast(P.registration_status("idle", "Registration stopped"))
         elif command == "commit":
             await self.commit_manual()
 
-    async def fail_registration(self, why, mode=None):
+    def record_event(self, kind, stop=True, **data):
+        if self.recorder is None:
+            return
+        self.recorder.event(kind, **data)
+        if stop:
+            self.recorder.stop()
+
+    async def fail_registration(self, why, mode=None, diag=None):
         self.log(f"[ar_bridge] registration failed: {why}")
+        self.record_event("failed", why=why, diag=diag or (self.session or {}).get("diag"))
         await self.broadcast(P.registration_status("failed", why, mode))
 
     def tag_prompt(self):
@@ -360,6 +375,7 @@ class ArBridgeServer:
         self.pose_history.clear()
         self.last_path = None
         self.log(f"[ar_bridge] registered ({method}): {info}")
+        self.record_event("registered", method=method, info=info, T_ar_map=T_ar_map)
         await self.broadcast(P.bridge_status(True, method, approximate))
         extra = {}
         if method == "april_tag":
@@ -401,7 +417,13 @@ class ArBridgeServer:
             await self.update_tag_registration(s, result)
 
     def process_frame(self, s, header, jpeg, cam):
-        """Worker thread: decode, detect, single-view PnP, multi-view estimate."""
+        """Worker thread: decode, detect, single-view PnP, multi-view estimate (+ record)."""
+        result = self._process_frame(s, header, jpeg, cam)
+        if self.recorder is not None:
+            self.recorder.frame(header, jpeg, cam, result, self.world.anchor(self.cfg.tag_id))
+        return result
+
+    def _process_frame(self, s, header, jpeg, cam):
         K, width, height = cam
         img = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_GRAYSCALE)
         if img is None:
@@ -454,7 +476,6 @@ class ArBridgeServer:
                               confidence=confidence)
             return
         if ready and anchor is None:
-            progress = min(progress, 95)
             message = (f"Glasses ready. Waiting for the robot camera to see tag {cfg.tag_id} "
                        f"(TF map -> ar_tag_{cfg.tag_id})")
         elif not result["visible"]:
@@ -502,6 +523,7 @@ class ArBridgeServer:
             return
         s["diag_blocker"], s["diag_logged"] = blocker, now
         d = s["diag"]
+        self.record_event("diagnosis", stop=False, diag=d, anchor_T_map_tag=anchor)
         views = (f"views {d['views_used']}/{d['views_total']} used, rms {d['rms_px']} px, "
                  f"sideways {d['baseline_m']} m, spread {d['pos_spread_m']} m / "
                  f"{d['rot_spread_deg']} deg" if est is not None else "no views")
@@ -512,7 +534,9 @@ class ArBridgeServer:
                  f"waiting for: {blocker or 'nothing (committing)'}")
 
     async def send_tag_status(self, s, message, progress, confidence):
-        extra = {"tag_visible": bool(s.get("visible")), "progress": int(progress),
+        # the Lens blanks its "Tag detected / not visible" text from 80 %: stay below that
+        # until the commit (which sends 100), so the wearer keeps seeing what is going on
+        extra = {"tag_visible": bool(s.get("visible")), "progress": min(int(progress), 79),
                  "registration_confidence": round(confidence, 3)}
         sol = s.get("solution")
         T_map_robot = self.world.robot_pose()
@@ -537,7 +561,7 @@ class ArBridgeServer:
                 why = f"The robot camera has not measured tag {self.cfg.tag_id} (no TF)"
             else:
                 why = "Not enough good views of the tag"
-            await self.fail_registration(why, "april_tag")
+            await self.fail_registration(why, "april_tag", diag=s.get("diag"))
             return
         if now - s.get("diag_logged", s["started"]) >= 5.0:
             s["diag_logged"] = now

@@ -1551,6 +1551,11 @@ unit / protocol tests (rendered tag images, a scripted Lens over a real WebSocke
 and 5.0, websockets 10.4-17.1) and a ROS 2 test that runs `ros2 launch g1_ar_bridge
 ar_bridge.launch.py` with a fake robot camera (rendered tag + depth + TF) and a scripted Lens
 (anchor with depth, registration, `map -> ar_world`, `spectacles`, user commands). Simulated
-accuracy (17 cm tag, ideal cameras): yaw ≤ 0.4°, points ≤ ~1 cm. **Not yet run on the robot
-or with the real glasses in AprilTag mode.** Next: home test with `sim_main` and a printed tag,
-then on the robot (RealSense first), then POIs from `semantic_query`.
+accuracy (17 cm tag, ideal cameras): yaw ≤ 0.4°, points ≤ ~1 cm. `sim_main` registered with
+the real glasses and a printed tag at home. **First robot run (2026-09-26, chest OAK-D): the
+robot anchor worked (`map -> ar_tag_0`, 1–2 px, stable to ~1 cm), but the glasses never
+committed** (the Lens hides its text above 80 % progress; the bridge logged nothing; Skip left
+the glasses unregistered). Since then the bridge logs what the registration waits for, records
+every attempt (`record_dir`, `bags/ar_registration/`) for `replay_registration`, and
+`ar_bridge.launch.py fake_robot:=true` tests the ROS path at home. Next: home test with
+`fake_robot:=true`, then the robot again, and replay the recording if it does not commit.

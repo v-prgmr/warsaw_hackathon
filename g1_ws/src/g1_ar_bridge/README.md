@@ -55,6 +55,18 @@ Glasses: Dimensional OS → the printed IP → Registration → **AprilTag** →
 facing it; the synthetic room's front wall should lie on your wall; two POIs and a green box sit
 on a virtual table to the robot's right.
 
+### A2. At home through ROS, no robot (Ubuntu, in the Humble container)
+
+The same ROS bridge as on the robot, with a fake robot at the map origin and a fake anchor
+`map -> ar_tag_0` (the wall tag `fake_tag_distance` m ahead) instead of `tag_anchor`. If this
+registers with your glasses and wall tag, the glasses side and the ROS path are fine and a failure
+at the robot is on the robot side (anchor TF, camera):
+
+```bash
+SIM=1 scripts/run_humble.sh                     # isolated DDS domain 77
+ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=0.16 fake_robot:=true
+```
+
 ### B. With the robot (Ubuntu laptop on the robot's Ethernet)
 
 Inside the robot-connected container (`scripts/run_humble.sh`, `--net=host`, so port 8787 is
@@ -88,6 +100,28 @@ Which robot camera:
   (depth aligned to the RGB image, same size; otherwise PnP only).
 
 The image's `frame_id` must be the camera's **optical** frame (OpenCV axes).
+
+## When the glasses do not register
+
+The Lens blanks its overlay text above 80 % progress, so the answer is in the bridge terminal.
+During an AprilTag registration `ar_bridge` prints what it is **waiting for** (consistent views,
+multi-view fit, sideways movement, the robot anchor TF, or the "up" check), plus start, stop
+(Skip) and every failure; `/ar_glasses/status` has the same as `tag_diagnosis`. The bridge keeps
+the progress it sends below 80 % until it really commits, so the glasses keep showing
+"Tag detected / not visible".
+
+Every attempt is **recorded** (`record_dir`, default `/ws/bags/ar_registration`; `sim_main`:
+`./ar_registration`): the glasses' JPEGs with their poses and intrinsics, the robot anchor, and
+the bridge's events. Replay one offline, with the bridge's own code and optionally other
+thresholds, to see exactly why it failed and what would have worked:
+
+```bash
+python3 -m g1_ar_bridge.replay_registration bags/ar_registration          # newest attempt
+python3 -m g1_ar_bridge.replay_registration <dir> --max-rms-px 5 --min-baseline-m 0.15
+python3 -m g1_ar_bridge.replay_registration <dir> --overlays /tmp/ov      # annotated frames
+```
+
+`--fake-anchor` judges the glasses side of a recording made before the robot had anchored.
 
 ## Frames and topics
 

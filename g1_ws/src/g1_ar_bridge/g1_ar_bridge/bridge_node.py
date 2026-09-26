@@ -173,7 +173,8 @@ class ArBridgeNode(Node):
             registration_timeout_s=float(p("registration_timeout_s", 180.0).value),
             pose_hz=float(p("pose_hz", 10.0).value),
             lidar_hz=float(p("lidar_hz", 2.0).value),
-            hmd_hz=float(p("hmd_hz", 2.0).value))
+            hmd_hz=float(p("hmd_hz", 2.0).value),
+            record_dir=p("record_dir", "").value)
         self.world = RosWorld(self, self.map_frame, p("robot_frame", "robot_center").value,
                               p("tag_frame_prefix", "ar_tag_").value, cfg.base_height_m,
                               float(p("cloud_voxel_m", 0.08).value),
@@ -273,10 +274,13 @@ def main():
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
-        if node is not None:
-            node.stop_bridge()
-            node.destroy_node()
-        rclpy.try_shutdown()
+        try:
+            if node is not None:
+                node.stop_bridge()
+                node.destroy_node()
+            rclpy.try_shutdown()
+        except KeyboardInterrupt:          # a second Ctrl-C while shutting down
+            pass
 
 
 if __name__ == "__main__":

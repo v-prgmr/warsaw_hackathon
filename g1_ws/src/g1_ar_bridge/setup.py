@@ -28,6 +28,7 @@ setup(
             "tag_anchor = g1_ar_bridge.tag_anchor_node:main",
             "publish_demo_pois = g1_ar_bridge.demo_pois_node:main",
             "sim_bridge = g1_ar_bridge.sim_main:main",
+            "replay_registration = g1_ar_bridge.replay_registration:main",
         ],
     },
 )

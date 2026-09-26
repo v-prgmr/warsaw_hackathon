@@ -42,7 +42,7 @@ async def main_async(args):
                      base_height=args.base_height, demo_pois=not args.no_demo_pois)
     cfg = BridgeConfig(tag_id=args.tag_id, tag_black_size_m=args.tag_size,
                        base_height_m=args.base_height, min_views=args.min_views,
-                       display_name="Unitree G1 (simulated)")
+                       display_name="Unitree G1 (simulated)", record_dir=args.record)
     bridge = ArBridgeServer(world, cfg)
     server = await serve(bridge, args.host, args.port)
     ips = local_ips() or ["<this computer's IP>"]
@@ -75,6 +75,9 @@ def main():
                     help="robot_center (pelvis) height above the floor (m)")
     ap.add_argument("--min-views", type=int, default=6)
     ap.add_argument("--no-demo-pois", action="store_true")
+    ap.add_argument("--record", default="ar_registration",
+                    help="save each AprilTag registration's glasses frames here, for "
+                         "`python -m g1_ar_bridge.replay_registration` ('' = off)")
     args = ap.parse_args()
     try:
         asyncio.run(main_async(args))

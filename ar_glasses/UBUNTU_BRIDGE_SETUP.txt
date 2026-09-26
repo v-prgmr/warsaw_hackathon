@@ -40,6 +40,12 @@ A2. Build the Docker image NOW (it installs websockets from the internet; offlin
 A3. Print the AprilTag: family 36h11, ID 0, black square >= 15 cm (A4 page), keep the white
     paper margin, glue flat on card. Measure the BLACK square with a ruler: e.g. 16.0 cm -> 0.16.
 
+A4b. (Recommended) The same ROS bridge as at the robot, with a FAKE robot and anchor (no robot,
+    glasses + laptop on any common Wi-Fi, tag on your wall):
+      SIM=1 scripts/run_humble.sh
+      ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=0.16 fake_robot:=true
+    If the glasses register here, the glasses side and the ROS path work.
+
 A4. (Optional) Quick check without robot, glasses + laptop on any common Wi-Fi:
       cd ~/warsaw_hackathon/g1_ws/src/g1_ar_bridge
       python3 -m pip install --user -r requirements-sim.txt
@@ -145,6 +151,10 @@ TROUBLESHOOTING
   Failures and "registration stopped by the glasses" (Skip/Back) are printed too. The same data is
   in `ros2 topic echo /ar_glasses/status` (tag_diagnosis). Do not press Skip: it leaves the glasses
   unregistered (no `spectacles` TF).
+  Every attempt is recorded in bags/ar_registration/<time>/ (glasses frames + robot anchor).
+  Replay it later, anywhere, with the bridge's own code:
+    python3 -m g1_ar_bridge.replay_registration bags/ar_registration --overlays /tmp/ov
+  Keep that folder and send it: it shows exactly why the registration did not finish.
 - Lens "Bridge not connected": laptop Wi-Fi and glasses on the SAME hotspot? Right IP (10.42.0.x,
   not 192.168.123.x)? Terminal 3 running? From the laptop: `nc -zv <wifi ip> 8787` must succeed.
 - "Waiting for the robot camera to see tag 0": do B5 (anchor missing).
