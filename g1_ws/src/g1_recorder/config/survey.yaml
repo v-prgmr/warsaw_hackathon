@@ -1,15 +1,22 @@
-# Canonical raw inputs for robot-off replay. Observed on the live G1 DDS graph;
-# verify message counts/rates on every run (especially the optional robot-state streams).
+# Canonical raw inputs for robot-off replay (AGENTS.md §7). Rates verified on the live G1 DDS graph
+# on 2026-09-25 (robot standing): verify message counts on every run.
 topics:
+  # Head RealSense (optional; only present while realsense-ros runs). OAK-D chest camera topics:
+  # add here once verified on the hardware.
   - /camera/color/image_raw
   - /camera/aligned_depth_to_color/image_raw
   - /camera/color/camera_info
-  - /utlidar/cloud_livox_mid360
-  - /utlidar/imu_livox_mid360
-  - /dog_odom
-  - /dog_imu_raw
-  - /lowstate
-  - /secondary_imu
-  - /lf/bmsstate
+  # Geometry / odometry
+  - /utlidar/cloud_livox_mid360      # 10 Hz, livox_frame
+  - /utlidar/imu_livox_mid360        # 200 Hz, livox_frame; accel in g, no orientation
+  - /dog_odom                        # ~1 kHz, odom -> robot_center
+  - /dog_imu_raw                     # ~1 kHz, dog_imu_link, orientation populated
+  - /secondary_imu                   # ~1 kHz, unitree_hg/IMUState
+  # Robot state. /lf/lowstate is the 20 Hz copy of /lowstate (1 kHz, ~2.4 MB/s): joint positions
+  # for regenerating /tf offline, battery for the motion thresholds (§25.2).
+  - /lf/lowstate
+  - /lf/bmsstate                     # 20 Hz
+  # Only present while g1_sensors tf_chain (§10.1) or the camera drivers run
+  - /joint_states
   - /tf
   - /tf_static

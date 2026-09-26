@@ -3,7 +3,7 @@ from glob import glob
 
 from setuptools import find_packages, setup
 
-package_name = "keyframe_manager"
+package_name = "g1_sensors"
 
 setup(
     name=package_name,
@@ -14,17 +14,18 @@ setup(
         ("share/" + package_name, ["package.xml"]),
         (os.path.join("share", package_name, "launch"), glob("launch/*.launch.py")),
         (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
+        (os.path.join("share", package_name, "urdf"), glob("urdf/*.urdf")),
+        (os.path.join("share", package_name, "rviz"), glob("rviz/*.rviz")),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
-    maintainer="inko",
-    maintainer_email="inko.inkreate@gmail.com",
-    description="Selects and exports RGB-D keyframes for semantic queries and offline fixtures.",
+    maintainer="stanislawix",
+    maintainer_email="stanislawix@gmail.com",
+    description="The G1's /tf chain: /lowstate bridge, URDF, static glue frames.",
     license="BSD-3-Clause",
     entry_points={
         "console_scripts": [
-            "keyframe_node = keyframe_manager.keyframe_node:main",
-            "fake_rgbd_pub = keyframe_manager.fake_rgbd_pub:main",
+            "lowstate_to_joint_states = g1_sensors.lowstate_to_joint_states:main",
         ],
     },
 )

@@ -3,7 +3,7 @@ from glob import glob
 
 from setuptools import find_packages, setup
 
-package_name = "keyframe_manager"
+package_name = "g1_mapping"
 
 setup(
     name=package_name,
@@ -14,17 +14,20 @@ setup(
         ("share/" + package_name, ["package.xml"]),
         (os.path.join("share", package_name, "launch"), glob("launch/*.launch.py")),
         (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
+        (os.path.join("share", package_name, "rviz"), glob("rviz/*.rviz")),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
-    maintainer="inko",
-    maintainer_email="inko.inkreate@gmail.com",
-    description="Selects and exports RGB-D keyframes for semantic queries and offline fixtures.",
+    maintainer="stanislawix",
+    maintainer_email="stanislawix@gmail.com",
+    description="RTAB-Map LiDAR-inertial mapping for the G1.",
     license="BSD-3-Clause",
     entry_points={
         "console_scripts": [
-            "keyframe_node = keyframe_manager.keyframe_node:main",
-            "fake_rgbd_pub = keyframe_manager.fake_rgbd_pub:main",
+            "compare_imu_sources = g1_mapping.compare_imu_sources:main",
+            "livox_cloud_fix = g1_mapping.livox_cloud_fix:main",
+            "livox_imu_fix = g1_mapping.livox_imu_fix:main",
+            "odom_to_tf = g1_mapping.odom_to_tf:main",
         ],
     },
 )

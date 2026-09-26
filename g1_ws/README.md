@@ -5,8 +5,10 @@ ROS 2 packages for the G1 capture → keyframe → visualize path (Module 1/2 + 
 | Package | Type | Role |
 |---------|------|------|
 | `g1_recorder` | ament_cmake | MCAP `rtab`, canonical `survey`, and audited `live_run` recording profiles + discovery |
+| `g1_sensors` | ament_python | the robot's `/tf`: `/lowstate` → `/joint_states` bridge, G1 29-DoF rev 1.0 URDF, static glue frames; see its README |
+| `g1_mapping` | ament_python | RTAB-Map LiDAR-inertial mapping (MID-360 + IMU, optional RGB-D color); see its README |
 | `keyframe_manager` | ament_python | select ~8–20 RGB-D keyframes → frozen keyframe struct + manifest |
-| `scene_server` | ament_python | **STUB (owned by D)** — synthetic `/vggt/scene_cloud` in `vggt_world` for the RViz surface |
+| `scene_server` | ament_python | **STUB (owned by D)** — synthetic `/scene_cloud` in `map` for the RViz surface |
 
 ## Build
 ```bash
@@ -23,8 +25,8 @@ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 ```bash
 # record→replay + tf_static QoS
 ros2 run demo_nodes_cpp talker &
-ros2 run tf2_ros static_transform_publisher --frame-id map --child-frame-id vggt_world &
-ros2 launch g1_recorder record.launch.py profile:=rtab  # Ctrl-C to stop -> g1_survey_<ts>/
+ros2 run tf2_ros static_transform_publisher --frame-id map --child-frame-id odom &
+ros2 launch g1_recorder record.launch.py profile:=survey  # Ctrl-C to stop -> g1_survey_<ts>/
 ros2 bag info g1_survey_* && ros2 bag play g1_survey_*
 
 # viz stub
@@ -75,7 +77,7 @@ The report lists nodes, all topics+types, per-topic QoS/rate, and static TF fram
   `g1_recorder/config/live_run.yaml` and
   `keyframe_manager/config/keyframe_params.yaml`. **Do not keep unverified names.**
 - Confirm **aligned depth** exists (RealSense launched with `align_depth.enable:=true`) — required
-  for primary RTAB-Map RGB-D mapping.
+  for POI back-projection and map coloring (mapping itself uses LiDAR + IMU).
 - If a sensor topic is `best_effort` and capture drops messages, add a QoS override in
   `g1_recorder/config/qos_override.yaml`.
 
@@ -90,10 +92,12 @@ The RealSense topics only appear after its ROS node is started.
 ```bash
 ros2 param load /camera/camera \
   "$(ros2 pkg prefix g1_recorder)/share/g1_recorder/config/realsense_rtab.yaml"
-ros2 launch g1_recorder record.launch.py profile:=rtab output:=rtab_take
 ros2 launch g1_recorder record.launch.py profile:=survey output:=survey_take
+# write down 2-3 tape-measured dimensions of the scene next to the bag name (AGENTS.md §10.2)
 ros2 bag info survey_take                            # verify all required topics have messages
-# robot OFF:
+# replay only in an isolated DDS domain (SIM=1 scripts/run_humble.sh -> domain 77), never on the
+# robot's domain 0: the bag's /dog_odom, /lf/lowstate, LiDAR (and /api/sport/request in live_run
+# bags) would reach the live robot's network
 ros2 bag play survey_take --clock             # in another terminal, run keyframe_manager with use_sim_time:=true
 ```
 Publish that bag as the team's shared fixture.

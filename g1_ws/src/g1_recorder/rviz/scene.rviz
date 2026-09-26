@@ -17,7 +17,7 @@ Visualization Manager:
       Name: SceneCloud
       Enabled: true
       Topic:
-        Value: /vggt/scene_cloud
+        Value: /scene_cloud
         Depth: 5
         Durability Policy: Transient Local
         Reliability Policy: Reliable
@@ -37,17 +37,8 @@ Visualization Manager:
       Size (Pixels): 2
       Color Transformer: Intensity
       Decay Time: 0
-    - Class: rviz_default_plugins/Path
-      Name: CameraPath
-      Enabled: true
-      Topic:
-        Value: /vggt/camera_path
-        Depth: 5
-        Durability Policy: Volatile
-        Reliability Policy: Reliable
-      Color: 25; 255; 0
   Global Options:
-    Fixed Frame: vggt_world
+    Fixed Frame: map
     Background Color: 48; 48; 48
   Tools:
     - Class: rviz_default_plugins/MoveCamera

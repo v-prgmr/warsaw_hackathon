@@ -1,4 +1,4 @@
-# Legacy full-survey topic list. Prefer profile:=rtab or profile:=full_survey.
+# Legacy full-survey topic list. Prefer profile:=survey (canonical) or profile:=live_run.
 # Topic names must still be verified on the real robot before canonical capture.
 topics:
   - /camera/color/image_raw

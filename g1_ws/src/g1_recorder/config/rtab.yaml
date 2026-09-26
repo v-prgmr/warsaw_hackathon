@@ -1,6 +1,6 @@
-# Minimal input bag for RTAB-Map RGB-D odometry and mapping.
-# RTAB-Map can generate odometry from RGB-D, so robot odometry, IMU, and LiDAR
-# are intentionally excluded to reduce network and disk load.
+# Camera-only bag for semantics / POI keyframes (Grounding DINO + SAM2) and RealSense checks.
+# NOT a mapping bag: RTAB-Map maps from LiDAR + IMU (AGENTS.md §8), which this profile omits.
+# Use profile:=survey for canonical captures.
 topics:
   - /camera/color/image_raw
   - /camera/aligned_depth_to_color/image_raw

@@ -3,18 +3,15 @@
 <package format="3">
   <name>scene_server</name>
   <version>0.0.1</version>
-  <description>STUB (owned by D). Publishes a synthetic colored PointCloud2 on /vggt/scene_cloud in
-  the vggt_world frame plus a static map->vggt_world TF, so the M3 visualization surface exists
-  before the real metric reconstruction lands. Real node must preserve the /vggt/scene_cloud
-  topic + vggt_world frame contract.</description>
+  <description>STUB (owned by D). Publishes a synthetic colored PointCloud2 on /scene_cloud in the
+  map frame, so the M3 visualization surface exists before the real metric map lands. Real node
+  must preserve the /scene_cloud topic + map frame contract.</description>
   <maintainer email="inko.inkreate@gmail.com">inko</maintainer>
   <license>BSD-3-Clause</license>
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>sensor_msgs_py</exec_depend>
-  <exec_depend>geometry_msgs</exec_depend>
-  <exec_depend>tf2_ros</exec_depend>
   <exec_depend>std_msgs</exec_depend>
 
   <test_depend>ament_copyright</test_depend>

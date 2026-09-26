@@ -1,0 +1,97 @@
+# g1_mapping configuration, read by launch/mapping.launch.py (plain YAML, not a ROS params file).
+# Topic and frame names live here, not in code (AGENTS.md §24). Names below were observed in
+# bags/full_survey_take_01 (2026-09-25); re-verify with g1_recorder's discover_sensors.sh.
+
+topics:
+  lidar: /utlidar/cloud_livox_mid360       # PointCloud2, ~10 Hz, frame livox_frame, time in ns
+  imu: /dog_imu_raw                        # imu_source:=dog. ~1 kHz, dog_imu_link, orientation populated
+  imu_livox: /utlidar/imu_livox_mid360     # imu_source:=livox. 200 Hz, livox_frame, accel in g, no orientation
+  dog_odom: /dog_odom                      # odom -> robot_center, ~1 kHz (fallback odometry)
+  rgb: /camera/color/image_raw
+  depth: /camera/aligned_depth_to_color/image_raw
+  camera_info: /camera/color/camera_info
+  # outputs of this package
+  cloud_fixed: /g1_mapping/cloud           # time in seconds, zero points removed
+  imu_livox_raw: /g1_mapping/imu_livox/data_raw   # accel in m/s^2 (livox_imu_fix)
+  imu_livox_filtered: /g1_mapping/imu_livox/data  # + orientation (imu_complementary_filter)
+  rgbd_image: /g1_mapping/rgbd_image
+  odom: /odom                              # odometry used by RTAB-Map / Nav2
+
+frames:
+  base: robot_center                       # child frame of /dog_odom
+  odom: odom
+  map: map
+
+lidar:
+  time_field: time
+  time_scale: 1.0e-9                       # MID-360 on the G1: float32 nanoseconds -> seconds
+  range_min: 0.3                           # drops (0,0,0) placeholders and head self-hits
+  range_max: 30.0
+  voxel_size: 0.1                          # indoor 0.05-0.1; outdoor >= 0.3
+  expected_update_rate: 15.0               # slightly above the 10 Hz scan rate
+  min_loop_closure_overlap: 0.2
+
+deskewing:
+  slerp: true
+
+livox_imu:                                 # imu_source:=livox only
+  accel_scale: 9.80665                     # the MID-360 IMU reports acceleration in g
+  # The raw MID-360 gyro has ~0.6-0.9 deg/s bias (drifts between runs). The complementary filter
+  # estimates it whenever the robot is still: start mapping with the robot standing for a few s.
+  bias_alpha: 0.01                         # imu_complementary_filter default
+
+# ESTIMATED fallback extrinsics for LEGACY bags recorded without /tf and without /lf/lowstate
+# (full_survey_take_01). Otherwise run g1_sensors tf_chain (the G1 URDF chain) and launch with
+# static_tf:=false; on probe_standing_live the URDF gives livox pitch 3.7 deg (vs 5.8 below).
+# Not a calibration. Derived from bags/full_survey_take_01: RANSAC ground plane in the depth
+# image and in the LiDAR cloud + /dog_odom height (robot_center ~0.72 m above the floor).
+# Cross-check vs the G1 URDF (unitree_ros g1_description, relative to torso_link):
+#   d435_joint   xyz 0.058 0.018 0.420, pitch 0.831 rad  (fit: pitch 0.890, camera 1.29 m above floor)
+#   mid360_joint xyz 0.000 0.000 0.406, pitch 0.040 rad  (fit: pitch 0.101, 1.23 m above floor)
+#   (values from the old g1_29dof.urdf; the robot is rev 1.0, whose mid360_joint is already
+#   upside down: roll pi, pitch 0.051, z 0.428.)
+# When bags contain /tf from robot_state_publisher (G1 URDF + joint_states), launch with
+# static_tf:=false so these do not compete with the URDF chain.
+# Convention: same as tf2_ros static_transform_publisher (R = Rz(yaw) * Ry(pitch) * Rx(roll)).
+static_transforms:
+  - {parent: robot_center, child: livox_frame, xyz: [0.0, 0.0, 0.51], rpy: [3.14159265, 0.101, 0.0]}
+  - {parent: robot_center, child: camera_link, xyz: [0.05, 0.0, 0.57], rpy: [0.0, 0.890, 0.0]}
+  - {parent: robot_center, child: dog_imu_link, xyz: [0.0, 0.0, 0.0], rpy: [0.0, 0.0, 0.0]}  # unverified
+
+# RTAB-Map internal parameters (strings), after rtabmap_examples/lidar3d.launch.py.
+# Icp/VoxelSize and Icp/MaxCorrespondenceDistance are derived from lidar.voxel_size in the launch.
+icp_parameters:
+  Icp/PointToPlane: "true"
+  Icp/Iterations: "10"
+  Icp/Epsilon: "0.001"
+  Icp/PointToPlaneK: "20"
+  Icp/PointToPlaneRadius: "0"
+  Icp/MaxTranslation: "3"
+  Icp/Strategy: "1"
+  Icp/OutlierRatio: "0.7"
+
+odometry_parameters:
+  Odom/ScanKeyFrameThr: "0.4"
+  OdomF2M/ScanMaxSize: "15000"
+  OdomF2M/BundleAdjustment: "false"
+  Icp/CorrespondenceRatio: "0.01"
+
+rtabmap_parameters:
+  RGBD/ProximityMaxGraphDepth: "0"
+  RGBD/ProximityPathMaxNeighbors: "10"     # lidar3d uses 1; 10 gave 12 vs 0 loop closures on full_survey_take_01
+  RGBD/AngularUpdate: "0.05"
+  RGBD/LinearUpdate: "0.05"
+  RGBD/CreateOccupancyGrid: "true"
+  Grid/Sensor: "0"                         # 2D grid from the LiDAR only (RGB-D is for color)
+  Grid/RangeMax: "8"
+  Grid/CellSize: "0.05"
+  Grid/MaxObstacleHeight: "1.0"            # relative to robot_center (~1.7 m above the floor)
+  # Normals-only ground segmentation classifies ANY horizontal surface as ground, so tables came
+  # out as free space. Horizontal points above this height (relative to robot_center, which is
+  # ~0.72 m above the floor) are obstacles: tabletops 318 occupied / 18 free cells instead of
+  # 69 / 357 on full_survey_take_01. Too tight a margin turns far, slightly tilted floor into
+  # obstacles; re-check on an indoor bag with /tf from the URDF.
+  Grid/MaxGroundHeight: "-0.55"
+  Mem/NotLinkedNodesKept: "false"
+  Mem/STMSize: "10"                        # lidar3d uses 30; see ProximityPathMaxNeighbors
+  Reg/Strategy: "1"
