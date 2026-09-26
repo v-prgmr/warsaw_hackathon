@@ -460,8 +460,9 @@ the explorer does not launch. Once started, `explore_lite` automatically selects
 frontiers from the full `/map` updates and sends Nav2 `NavigateToPose` goals;
 frontier markers appear on `/explore/frontiers` (add a MarkerArray display in
 RViz). The explorer uses `base_footprint` and does not return to its starting
-position automatically. The small upstream patch prevents a reached frontier
-from being immediately selected again within Nav2's goal tolerance. To stop,
+position automatically. The local upstream patch keeps an active frontier goal
+stable while SLAM updates, and prevents an already reached frontier from being
+immediately selected again within Nav2's goal tolerance. To stop,
 pause and cancel goals before Ctrl-C:
 
 ```bash
@@ -485,6 +486,67 @@ Nav2 typically requires:
 - `map → odom → base_footprint` (or `base_link` depending on your robot)
 
 ---
+
+## RTAB-Map / Nav2 command-only test on the real G1
+
+After syncing the **laptop** to the robot clock and starting `g1_sensors`
+`tf_chain.launch.py` plus `g1_mapping` `mapping.launch.py static_tf:=false`, run
+only the scan pipeline from this workspace (with the live ROS domain and wired
+CycloneDDS interface already configured):
+
+```bash
+ros2 run pointcloud_to_laserscan pointcloud_to_laserscan_node --ros-args \
+  -r cloud_in:=/utlidar/cloud_livox_mid360 -r scan:=/scan_raw \
+  -p target_frame:=robot_center -p transform_tolerance:=0.3 \
+  -p min_height:=-0.2 -p max_height:=0.2 -p range_min:=0.2 -p range_max:=8.0
+
+ros2 run humanoid_nav_bridge scan_restamper --ros-args \
+  -p input_scan_topic:=/scan_raw -p output_scan_topic:=/scan \
+  -p override_stamp:=false
+```
+
+Run these in separate terminals, then launch Nav2 in **command-only** mode:
+
+```bash
+ros2 launch g1_nav2 rtabmap_nav_dry_run.launch.py
+```
+
+This launch leaves `/cmd_vel` unpublished: controller output goes to
+`/g1_nav2_dry_run/cmd_vel_raw`, and the smoother and recovery behaviors publish
+to `/g1_nav2_dry_run/cmd_vel`. Verify `/cmd_vel` has **zero publishers** before
+sending any test goal. It does not start locomotion, SLAM Toolbox, or an odom
+bridge. The scan relay subscribes best-effort and publishes reliably for Nav2
+costmaps; with synchronized clocks it keeps the original LiDAR stamp.
+
+A standing-only RTAB-Map grid may have almost no traversable free space. In the
+initial live test a goal 0.65 m ahead was unknown and Nav2 issued a dry-run
+recovery spin rather than a path-following command. Build a map by surveying
+with the vendor remote before expecting a planning or frontier-navigation test.
+For a **command-only** frontier test, after confirming `/cmd_vel` has zero
+publishers and subscribers, start the explorer with the real G1 frames:
+
+```bash
+ros2 run explore_lite explore --ros-args \
+  -p use_sim_time:=false -p robot_base_frame:=robot_center \
+  -p costmap_topic:=/map -p costmap_updates_topic:=/map_updates \
+  -p progress_timeout:=60.0 -p min_frontier_size:=0.3 \
+  -p return_to_init:=false
+```
+
+On a harness-supported stationary G1, the explorer found a frontier, Nav2
+accepted the goal, and then correctly reported no physical progress. Keep
+the Loco client **off** throughout this test; stop the explorer before
+testing high-level locomotion separately.
+Once surveyed, while the same read-only stack and dry Nav2 launch are running,
+check for a short path and fresh battery without sending any walking goal:
+
+```bash
+ros2 run g1_nav2 check_rtabmap_plan
+```
+
+It requires the `g1_sensors` `/lf/bmsstate` bridge (`/battery_state`), fresh TF,
+scan and costmaps, then calls **ComputePathToPose only** to find a short path
+through known free space. A standing-only map correctly reports `NOT READY`.
 
 ## Real robot (Unitree G1 / G1 EDU23) — staged testing
 

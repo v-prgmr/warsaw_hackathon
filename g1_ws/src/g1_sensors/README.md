@@ -15,6 +15,17 @@ robot_center ─► pelvis ─► waist yaw/roll/pitch ─► torso_link ─► 
 towards the robot: it subscribes to `/lf/lowstate` and the LiDAR IMU and publishes `/joint_states`,
 `/tf`, `/tf_static`, `/robot_description`.
 
+The same launch bridges `/lf/bmsstate` (`unitree_hg/BmsState.soc` = 0..100%)
+to `/battery_state` (`sensor_msgs/BatteryState.percentage` = 0.0..1.0). Missing
+BMS input produces no battery messages; an invalid SOC is published as NaN and
+blocks the Loco gateway. To test only this read-only bridge without
+`tf_chain.launch.py`, run:
+
+```bash
+ros2 run g1_sensors bms_to_battery_state --ros-args \
+  -r bms:=/lf/bmsstate -r battery_state:=/battery_state
+```
+
 ## Run
 
 Live, in the robot-connected container:

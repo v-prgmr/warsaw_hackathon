@@ -12,6 +12,8 @@ topics:
   # stamps match /dog_imu_raw's within 1 ms). /dog_imu_raw (1 kHz) also works, at more CPU.
   clock_reference: /utlidar/imu_livox_mid360
   joint_states: /joint_states
+  bms: /lf/bmsstate                  # 20 Hz Unitree BMS SOC (0..100)
+  battery_state: /battery_state      # sensor_msgs/BatteryState percentage (0..1)
 
 bridge:
   publish_rate: 50.0                    # Hz cap on /joint_states and /tf (0 = every lowstate message)

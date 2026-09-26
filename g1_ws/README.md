@@ -7,6 +7,7 @@ ROS 2 packages for the G1 capture → keyframe → visualize path (Module 1/2 + 
 | `g1_recorder` | ament_cmake | MCAP `rtab`, canonical `survey`, and audited `live_run` recording profiles + discovery |
 | `g1_sensors` | ament_python | the robot's `/tf`: `/lowstate` → `/joint_states` bridge, G1 29-DoF rev 1.0 URDF, static glue frames; see its README |
 | `g1_mapping` | ament_python | RTAB-Map LiDAR-inertial mapping (MID-360 + IMU, optional RGB-D color); see its README |
+| `g1_loco_cmdvel` | ament_cmake | Safety-gated `/cmd_vel` to high-level Unitree G1 Loco `SetVelocity`; see its README |
 | `keyframe_manager` | ament_python | select ~8–20 RGB-D keyframes → frozen keyframe struct + manifest |
 | `scene_server` | ament_python | **STUB (owned by D)** — synthetic `/scene_cloud` in `map` for the RViz surface |
 

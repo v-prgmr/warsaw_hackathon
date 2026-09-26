@@ -52,6 +52,13 @@ def _launch_setup(context):
                           "publish_frequency": rate}],
              remappings=[("joint_states", topics["joint_states"])]),
     ]
+    if LaunchConfiguration("publish_battery_state").perform(context).lower() in ("true", "1"):
+        nodes.append(Node(
+            package="g1_sensors", executable="bms_to_battery_state", output="screen",
+            parameters=[{"use_sim_time": use_sim_time}],
+            remappings=[("bms", topics["bms"]),
+                        ("battery_state", topics["battery_state"])],
+        ))
     for tf in cfg.get("static_transforms", []):
         (x, y, z), (roll, pitch, yaw) = tf["xyz"], tf["rpy"]
         nodes.append(Node(
@@ -85,5 +92,7 @@ def generate_launch_description():
                                             "meshes",
                               description="G1 meshes for RViz's RobotModel (optional)."),
         DeclareLaunchArgument("rviz", default_value="false"),
+        DeclareLaunchArgument("publish_battery_state", default_value="true",
+                              description="Bridge /lf/bmsstate SOC into /battery_state."),
         OpaqueFunction(function=_launch_setup),
     ])

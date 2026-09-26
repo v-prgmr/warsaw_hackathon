@@ -1,7 +1,124 @@
+diff --git a/explore/include/explore/explore.h b/explore/include/explore/explore.h
+--- a/explore/include/explore/explore.h
++++ b/explore/include/explore/explore.h
+@@ -145,6 +145,7 @@ private:
+   std::string robot_base_frame_;
+   bool resuming_ = false;
+   bool goal_active_{false};
++  bool canceling_stalled_goal_{false};
+   rclcpp_action::GoalUUID active_goal_id_;
+ };
+ }  // namespace explore
 diff --git a/explore/src/explore.cpp b/explore/src/explore.cpp
 --- a/explore/src/explore.cpp
 +++ b/explore/src/explore.cpp
-@@ -386,5 +386,9 @@ void Explore::reachedGoal(const NavigationGoalHandle::WrappedResult& result,
+@@ -237,7 +237,7 @@ void Explore::makePlan()
+     RCLCPP_DEBUG(logger_, "frontier %zd cost: %f", i, frontiers[i].cost);
+   }
+ 
+-  if (frontiers.empty()) {
++  if (frontiers.empty() && !goal_active_) {
+     RCLCPP_WARN(logger_, "No frontiers found, stopping.");
+     auto status_msg = explore_lite_msgs::msg::ExploreStatus();
+     status_msg.status = explore_lite_msgs::msg::ExploreStatus::EXPLORATION_COMPLETE;
+@@ -251,6 +251,26 @@ void Explore::makePlan()
+     visualizeFrontiers(frontiers);
+   }
+ 
++  // A changing map moves frontier centroids every scan. Replacing the active
++  // goal on every centroid change repeatedly preempts Nav2 and makes the robot
++  // turn toward a new path without ever making forward progress.
++  if (goal_active_) {
++    const double distance = std::hypot(pose.position.x - prev_goal_.x,
++                                       pose.position.y - prev_goal_.y);
++    if (distance < prev_distance_ - 0.05) {
++      prev_distance_ = distance;
++      last_progress_ = this->now();
++    }
++    if (!canceling_stalled_goal_ && navigation_goal_handle_ &&
++        this->now() - last_progress_ > tf2::durationFromSec(progress_timeout_)) {
++      RCLCPP_WARN(logger_, "No progress toward frontier (%.2f m away); canceling goal", distance);
++      frontier_blacklist_.push_back(prev_goal_);
++      canceling_stalled_goal_ = true;
++      move_base_client_->async_cancel_goal(navigation_goal_handle_);
++    }
++    return;
++  }
++
+   // find non blacklisted frontier
+   auto frontier =
+       std::find_if_not(frontiers.begin(), frontiers.end(),
+@@ -267,42 +287,18 @@ void Explore::makePlan()
+   }
+   geometry_msgs::msg::Point target_position = frontier->centroid;
+ 
+-  // time out if we are not making any progress
+-  bool same_goal = same_point(prev_goal_, target_position);
+-
+   prev_goal_ = target_position;
+-  if (!same_goal || prev_distance_ > frontier->min_distance) {
+-    // we have different goal or we made some progress
+-    last_progress_ = this->now();
+-    prev_distance_ = frontier->min_distance;
+-  }
+-  // black list if we've made no progress for a long time
+-  if (goal_active_ &&
+-      (this->now() - last_progress_ >
+-       tf2::durationFromSec(progress_timeout_)) &&
+-      !resuming_) {
+-    frontier_blacklist_.push_back(target_position);
+-    RCLCPP_DEBUG(logger_, "Adding current goal to black list");
+-    makePlan();
+-    return;
+-  }
+-
+-  // ensure only first call of makePlan was set resuming to true
+-  if (resuming_) {
+-    resuming_ = false;
+-  }
+-
+-  // we don't need to do anything if we still pursuing the same goal
+-  if (same_goal && goal_active_) {
+-    return;
+-  }
++  prev_distance_ = std::hypot(pose.position.x - target_position.x,
++                              pose.position.y - target_position.y);
++  last_progress_ = this->now();
++  canceling_stalled_goal_ = false;
+ 
+   RCLCPP_DEBUG(logger_, "Sending goal to move base nav2");
+ 
+   // send goal to move_base if we have something new to pursue
+   auto goal = nav2_msgs::action::NavigateToPose::Goal();
+   goal.pose.pose.position = target_position;
+-  goal.pose.pose.orientation.w = 1.;
++  goal.pose.pose.orientation = pose.orientation;
+   goal.pose.header.frame_id = costmap_client_.getGlobalFrameID();
+   goal.pose.header.stamp = this->now();
+ 
+@@ -314,8 +310,10 @@ void Explore::makePlan()
+       [this](const NavigationGoalHandle::SharedPtr& goal_handle) {
+         if (!goal_handle) {
+           RCLCPP_ERROR(logger_, "Goal was REJECTED by the action server");
++          frontier_blacklist_.push_back(prev_goal_);
+           goal_active_ = false;
+         } else {
++          navigation_goal_handle_ = goal_handle;
+           active_goal_id_ = goal_handle->get_goal_id();
+           RCLCPP_DEBUG(logger_, "Goal ACCEPTED, uuid: %s",
+             rclcpp_action::to_string(active_goal_id_).c_str());
+@@ -381,11 +379,21 @@ void Explore::reachedGoal(const NavigationGoalHandle::WrappedResult& result,
+   }
+ 
+   goal_active_ = false;
++  navigation_goal_handle_.reset();
++  const bool stalled_goal = canceling_stalled_goal_;
++  canceling_stalled_goal_ = false;
++  if (exploring_timer_->is_canceled()) {
++    return;
++  }
+   switch (result.code) {
+     case rclcpp_action::ResultCode::SUCCEEDED:
        RCLCPP_DEBUG(logger_, "Goal was successful");
        last_progress_ = this->now();
        prev_distance_ = 0;
@@ -11,3 +128,24 @@ diff --git a/explore/src/explore.cpp b/explore/src/explore.cpp
 +      frontier_blacklist_.push_back(frontier_goal);
        break;
      case rclcpp_action::ResultCode::ABORTED:
+ #ifdef NAV2_RESULT_HAS_ERROR_CODE
+@@ -407,7 +415,9 @@ void Explore::reachedGoal(const NavigationGoalHandle::WrappedResult& result,
+       return;
+     case rclcpp_action::ResultCode::CANCELED:
+       RCLCPP_DEBUG(logger_, "Goal was canceled");
+-      // If goal canceled might be because exploration stopped from topic. Don't make new plan.
++      if (stalled_goal) {
++        makePlan();  // The timed-out target is blacklisted; try another frontier.
++      }
+       return;
+     default:
+       RCLCPP_WARN(logger_, "Unknown result code from move base nav2");
+@@ -439,6 +449,8 @@ void Explore::stop(bool finished_exploring)
+   RCLCPP_INFO(logger_, "Exploration stopped.");
+ 
+   goal_active_ = false;
++  canceling_stalled_goal_ = false;
++  navigation_goal_handle_.reset();
+   // Only publish paused status if manually stopped (not finished exploring)
+   if (!finished_exploring) {
+     auto status_msg = explore_lite_msgs::msg::ExploreStatus();

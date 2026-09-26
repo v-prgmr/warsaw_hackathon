@@ -90,6 +90,14 @@ The configured minimum frontier length is 0.75 m in
 `src/g1_nav2/params/explore_g1_sim.yaml`. After addressing the map or sensor
 issue, restart Terminal 3; a completed explorer does not resume itself.
 
+The local `m-explore-ros2-success.patch` keeps the current goal until Nav2
+returns a result, rather than preempting it every time a SLAM update moves a
+frontier centroid. It cancels and blacklists a goal only after 60 seconds
+without 5 cm of progress toward it. Nav2's own progress checker permits
+30 seconds without 20 cm of movement before starting recovery. After rebuilding
+these changes, stop the old explorer and Nav2 launches and start new processes;
+running nodes do not pick up a rebuilt binary or updated YAML automatically.
+
 To pause exploration and cancel its goals before stopping Terminal 3:
 
 ```bash

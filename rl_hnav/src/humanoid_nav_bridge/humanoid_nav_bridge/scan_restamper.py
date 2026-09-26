@@ -37,6 +37,7 @@ and adjust reliability accordingly.
 from __future__ import annotations
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
@@ -65,27 +66,33 @@ class ScanRestamper(Node):
         # -------------------------
         # QoS (sensor-like, low latency)
         # -------------------------
-        # Many LiDAR / scan topics are BEST_EFFORT with KEEP_LAST.
-        # Using the same QoS for pub/sub keeps the behavior consistent.
-        self.qos: QoSProfile = QoSProfile(
+        # The converter's /scan_raw may be BEST_EFFORT. Nav2 costmaps request
+        # RELIABLE /scan, so the relay must offer RELIABLE on its publisher.
+        self.input_qos: QoSProfile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10,
+        )
+        self.output_qos: QoSProfile = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST,
             depth=10,
         )
 
         # Publisher: output /scan
-        self.pub = self.create_publisher(LaserScan, self.output_scan_topic, self.qos)
+        self.pub = self.create_publisher(LaserScan, self.output_scan_topic, self.output_qos)
 
         # Subscriber: input /scan_raw
         self.sub = self.create_subscription(
-            LaserScan, self.input_scan_topic, self._cb, self.qos
+            LaserScan, self.input_scan_topic, self._cb, self.input_qos
         )
 
         # Log configuration once at startup
         self.get_logger().info(
             f"[scan_restamper] input='{self.input_scan_topic}' -> output='{self.output_scan_topic}', "
-            f"override_stamp={self.override_stamp}, qos=BEST_EFFORT depth=10"
+            f"override_stamp={self.override_stamp}, qos=BEST_EFFORT in / RELIABLE out"
         )
 
     def _cb(self, msg: LaserScan) -> None:
@@ -134,11 +141,11 @@ def main() -> None:
 
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

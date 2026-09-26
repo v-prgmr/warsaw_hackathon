@@ -45,6 +45,7 @@ setup(
             'sim_ros2 = g1_nav2.sim_environment:main',
             'check_nav_goal = g1_nav2.check_nav_goal:main',
             'navigation_tf_relay = g1_nav2.navigation_tf_relay:main',
+            'check_rtabmap_plan = g1_nav2.check_rtabmap_plan:main',
         ],
     },
 )
