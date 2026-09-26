@@ -26,6 +26,7 @@ Pinned upstream commit: **`ebf1d38`** (2026-09-26). Lens Studio version of that 
 |---|---|
 | `mock_bridge/mock_bridge.py` | stand-in bridge: handshake, registration (manual, or a mock AprilTag flow), a simulated G1 that walks to goals, synthetic LiDAR room, demo POIs + a 3D box (`--demo-pois`). Python 3.9+ and `websockets` only |
 | `mock_bridge/test_mock_bridge.py` | protocol tests (a WebSocket client playing the Lens) |
+| `UBUNTU_BRIDGE_SETUP.txt` | hand-out for the Ubuntu laptop connected to the G1: network, mock test, `g1_ar_bridge` plan, WebSocket vs FastAPI, AprilTag |
 | `upstream/` | your clone of spectacles-dimensional-os (git-ignored; see step 3) |
 
 ---
