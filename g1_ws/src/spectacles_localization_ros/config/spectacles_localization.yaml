@@ -1,0 +1,17 @@
+# Live configuration. Supply a physically measured T_map_tag before using YAML mode.
+tag:
+  id: 0
+  size_m: 0.16                    # actual printed black-square edge; measure it
+frames:
+  map: map
+  tag: april_tag_0
+  world: spectacles_world
+  spectacles: spectacles
+tag_pose_map: null               # [x, y, z, qx, qy, qz, qw], metres / ROS xyzw
+publish_tag_tf: false           # true only when tag_pose_map is measured and set
+registration:
+  minimum_detections: 10
+  timeout_sec: 10.0
+  tracking_timeout_sec: 1.0
+  max_translation_residual_m: 0.25
+  max_angular_residual_deg: 15.0

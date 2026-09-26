@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>spectacles_localization_ros</name>
+  <version>0.1.0</version>
+  <description>Register Spectacles world tracking against a known AprilTag in the G1 RTAB-Map frame.</description>
+  <maintainer email="team@example.invalid">Alien Bazaar team</maintainer>
+  <license>BSD-3-Clause</license>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>python3-websockets</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
+  <test_depend>python3-pytest</test_depend>
+  <export><build_type>ament_python</build_type></export>
+</package>

@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180mm" height="180mm" viewBox="0 0 180 180">
+<desc>AprilRobotics-orientation AprilTag 36h11 ID 0; black square edge 160 mm at 100% print scale.</desc>
+<rect width="180" height="180" fill="white"/>
+<rect x="10" y="10" width="20" height="20" fill="black"/>
+<rect x="30" y="10" width="20" height="20" fill="black"/>
+<rect x="50" y="10" width="20" height="20" fill="black"/>
+<rect x="70" y="10" width="20" height="20" fill="black"/>
+<rect x="90" y="10" width="20" height="20" fill="black"/>
+<rect x="110" y="10" width="20" height="20" fill="black"/>
+<rect x="130" y="10" width="20" height="20" fill="black"/>
+<rect x="150" y="10" width="20" height="20" fill="black"/>
+<rect x="10" y="30" width="20" height="20" fill="black"/>
+<rect x="70" y="30" width="20" height="20" fill="black"/>
+<rect x="110" y="30" width="20" height="20" fill="black"/>
+<rect x="150" y="30" width="20" height="20" fill="black"/>
+<rect x="10" y="50" width="20" height="20" fill="black"/>
+<rect x="30" y="50" width="20" height="20" fill="black"/>
+<rect x="110" y="50" width="20" height="20" fill="black"/>
+<rect x="150" y="50" width="20" height="20" fill="black"/>
+<rect x="10" y="70" width="20" height="20" fill="black"/>
+<rect x="30" y="70" width="20" height="20" fill="black"/>
+<rect x="90" y="70" width="20" height="20" fill="black"/>
+<rect x="110" y="70" width="20" height="20" fill="black"/>
+<rect x="130" y="70" width="20" height="20" fill="black"/>
+<rect x="150" y="70" width="20" height="20" fill="black"/>
+<rect x="10" y="90" width="20" height="20" fill="black"/>
+<rect x="50" y="90" width="20" height="20" fill="black"/>
+<rect x="90" y="90" width="20" height="20" fill="black"/>
+<rect x="110" y="90" width="20" height="20" fill="black"/>
+<rect x="130" y="90" width="20" height="20" fill="black"/>
+<rect x="150" y="90" width="20" height="20" fill="black"/>
+<rect x="10" y="110" width="20" height="20" fill="black"/>
+<rect x="30" y="110" width="20" height="20" fill="black"/>
+<rect x="70" y="110" width="20" height="20" fill="black"/>
+<rect x="130" y="110" width="20" height="20" fill="black"/>
+<rect x="150" y="110" width="20" height="20" fill="black"/>
+<rect x="10" y="130" width="20" height="20" fill="black"/>
+<rect x="30" y="130" width="20" height="20" fill="black"/>
+<rect x="50" y="130" width="20" height="20" fill="black"/>
+<rect x="70" y="130" width="20" height="20" fill="black"/>
+<rect x="110" y="130" width="20" height="20" fill="black"/>
+<rect x="130" y="130" width="20" height="20" fill="black"/>
+<rect x="150" y="130" width="20" height="20" fill="black"/>
+<rect x="10" y="150" width="20" height="20" fill="black"/>
+<rect x="30" y="150" width="20" height="20" fill="black"/>
+<rect x="50" y="150" width="20" height="20" fill="black"/>
+<rect x="70" y="150" width="20" height="20" fill="black"/>
+<rect x="90" y="150" width="20" height="20" fill="black"/>
+<rect x="110" y="150" width="20" height="20" fill="black"/>
+<rect x="130" y="150" width="20" height="20" fill="black"/>
+<rect x="150" y="150" width="20" height="20" fill="black"/>
+</svg>

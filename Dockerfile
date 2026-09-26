@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-rosbag2-storage-mcap \
     ros-humble-tf2-tools \
     python3-pip \
+    python3-websockets \
+    python3-opencv \
     git \
     iproute2 \
     iputils-ping \

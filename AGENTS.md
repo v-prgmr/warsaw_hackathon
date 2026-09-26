@@ -1450,3 +1450,229 @@ Agents must never "fix and retry" after an incident, and must not delete or rota
 - M5 (autonomous survey): gated by 25.1 / 25.3. Decide early whether to use high-level Loco client (fewer requirements) or `rl_hnav` (harness trial + supervisor first). Budget time for the harness trial and supervisor dry-run.
 - Mounting extra sensors: <= 1 kg, non-destructive, no occluding of existing sensors.
 - Recording (M0): `rosbag2` and supervisor logs run on the dev machine or a non-critical thread; do not add load to the command path.
+
+---
+
+# 26. Spectacles AR display smoke test (2026-09-26)
+
+`ar_glasses_test/` is a standalone, display-only Snap Lens experiment. It has a
+`hello_g1.js` script and setup instructions for a head-following `Text3D` label
+and a locally world-anchored 3D object. This is **not** a G1, ROS, POI, or
+RTAB-Map integration, and it must not publish robot commands or TF.
+
+The laptop observed USB device `05c6:6769` as `Snap Inc. Spectacles` with
+storage/HID interfaces; this confirms a USB connection, not the exact model,
+camera/IMU access, Lens deployment, or mapping-frame localization. The team
+confirmed Spectacles (2024) on 2026-09-26. Snap's Lens Studio desktop editor is
+supported on Windows/macOS, not the Ubuntu laptop; for Spectacles (2024), Snap
+directs developers to Lens Studio 5.15.4 rather than the newer SPECS release.
+
+Next gate: run the smoke test on a supported host and record the acceptance
+results in `ar_glasses_test/README.md`. The ROS-side registration math/mock may
+be developed offline, but physical marker/map-frame registration and read-only
+G1 pose/POI display must wait for on-device rendering and local World tracking.
+No AR-to-G1 actuation is planned.
+
+---
+
+# 27. Spectacles pose in the RTAB-Map map (2026-09-26)
+
+`docs/spectacles_localization_architecture.md` is the integration contract;
+`g1_ws/src/spectacles_localization_ros` is a separate ROS 2 Humble prototype.
+RTAB-Map remains the sole `map -> odom` owner. The real G1 base is
+`robot_center` (not `g1/base_link`). This package may own `map -> spectacles`
+and, only when given a measured tag pose, `map -> april_tag_0`; neither TF may
+have a competing publisher.
+
+The package registers a single AprilTag 36h11: known `T_map_tag`, observed
+`T_device_tag`, and local `T_spectaclesWorld_device` yield
+`T_map_spectaclesWorld = T_map_tag * inverse(T_device_tag) *
+inverse(T_spectaclesWorld_device)`. It gathers at least 10 observations,
+rejects gross outliers, and continues publishing the wearer pose from local
+tracking after the tag disappears. The YAML live tag pose is **unset**, never
+assumed; a manual measured pose or one external tag TF is required. A mock
+publishes synthetic observations and ground truth so transform direction is
+testable without hardware.
+
+No Spectacles Lens Studio project/SDK was found in the repo. Snap documents
+World tracking, CameraModule, and
+WebSocket, but not native AprilTag dictionaries in MarkerTrackingComponent.
+The bridge has an optional host-side OpenCV AprilTag detector for paired JPEG
+frames; no device-frame capture, camera extrinsic, axis conversion, clock
+pairing, or physical localization has been validated. Do not claim the
+Spectacles end-to-end path works yet. The `ws://` bridge is prototype-only,
+requires a token on non-localhost bindings, and camera/internet permission plus
+network privacy review before real use. No G1 navigation or locomotion code is
+changed by this prototype.
+
+## 27.1 Ubuntu laptop-only test (2026-09-26)
+
+`ar_glasses_test/laptop_anchor/` now contains a printable AprilTag 36h11 ID 0
+(160 mm black square), a `laptop` frame defined at the tag centre, and a
+step-by-step ROS/WebSocket mock test. `config/laptop_anchor.yaml` deliberately
+sets `T_laptop_tag` to identity **by frame definition**, not by an unmeasured
+chassis calibration. `scripts/run_spectacles_laptop.sh` starts an isolated
+ROS 2 Humble Docker environment (domain 77, Fast DDS); a small derived image
+adds `websockets==10.4` without changing the host Python or robot image.
+`laptop_mock_client` sends paired synthetic tag and local tracking poses over
+the actual WebSocket bridge. Verified: registration reaches `LOCALIZED` after
+10 detections, and `/tf` publishes `laptop -> spectacles`. The mock uses a
+fresh session ID on each invocation so repeated tests re-register correctly.
+No G1 connection or command is involved.
+
+This does **not** constitute a physical Spectacles test: USB detection exposes
+no usable pose/camera stream on this Ubuntu host. To deploy a custom Lens on
+Spectacles (2024), Snap lists Lens Studio 5.15.4 for Windows/macOS; Linux is
+unsupported. Docker on Linux cannot run the Windows GUI editor, and this host
+currently has no `/dev/kvm` acceleration for a practical Windows VM.
+Snap also documents a built-in Browser Lens that runs hosted WebXR pages on
+Spectacles (2024) without Lens Studio. This can test display and local XR
+tracking now, but Snap's published WebXR feature list does not establish
+camera-frame access for automatic AprilTag detection. Use a supported
+Windows/macOS machine for the planned camera-access Lens deployment, then the
+Ubuntu ROS bridge can receive packets over an isolated LAN. Do not claim a
+working on-device bridge or tag detection until the Lens, axis conversion,
+camera extrinsic, and packet timing are validated physically.
+
+---
+
+# 28. Physical Spectacles bounding-box display test (2026-09-26)
+
+`ar_glasses_test/webxr_bbox/` contains a dependency-free WebXR AR page for the
+Spectacles (2024) built-in Browser Lens. It renders one cyan 0.6 × 0.8 × 0.5 m
+wireframe box about 1.5 m ahead at session start, then leaves it fixed in the
+glasses' local tracking frame. This is **not** object detection, laptop/map
+registration, or a G1 overlay; it sends no camera frames or poses. JS syntax
+and local HTTP delivery passed. On-device behavior is still unverified.
+
+The Ubuntu sandbox sees the Spectacles USB IDs but has no `/dev/bus/usb` node,
+so it cannot authorize or run ADB against the device. Google's platform-tools
+were downloaded to `/tmp/spectacles-platform-tools/platform-tools/` for the
+human to try in a normal Ubuntu terminal. If `adb devices -l` reports `device`,
+`adb reverse tcp:8787 tcp:8787` may let Browser Lens open
+`http://localhost:8787` while the local Python server runs; this route must be
+verified on hardware. Ngrok and Cloudflare Quick Tunnel were tried but the
+current network's ISP filter intercepts their TLS certificates, so no public
+HTTPS tunnel URL is available from this laptop. Do not represent the physical
+display test as passed until the wearer confirms the box appears and stays
+world-fixed. Exact user steps and failure interpretations are in the WebXR
+folder README.
+
+The first human `adb devices -l` attempt saw the Spectacles serial but
+reported `no permissions` (missing udev rules). A narrow local rule for the
+observed ADB USB ID `18d1:4ee7` is prepared at
+`ar_glasses_test/usb/51-spectacles-adb.rules`; it grants `plugdev` access to
+that exact USB device node. System installation requires the human's `sudo`
+in a normal Ubuntu terminal, followed by replugging USB-C. Do not use root
+ADB, broad world-writable modes, or claim ADB authorization before retesting.
+
+The human installed that rule, reloaded udev, and reconnected the glasses.
+`adb devices -l` now reports serial `41201FBM43617256_app` as `device`, model
+`Snap_matador`; this verifies host USB/ADB access, not Lens Studio or camera
+access. The local WebXR page is serving HTTP 200 on `127.0.0.1:8787`, and
+`adb reverse tcp:8787 tcp:8787` succeeded (`adb reverse --list` shows
+`UsbFfs tcp:8787 tcp:8787`). The next **unverified** step is for the wearer to
+open Browser Lens on the Spectacles at `http://localhost:8787` and report
+whether the world-fixed cyan box appears. Do not claim that visual result yet.
+The local HTTP log subsequently showed `GET /`, `GET /bbox.js`, and a browser
+`/favicon.ico` request via the loopback route. This confirms page delivery to
+a browser client, but not WebXR support or visible AR rendering.
+The wearer then clarified that **the Browser Lens itself is not visible** in
+Lens Explorer. This blocks the WebXR display test before the page can be
+opened; it does not establish a failure of the page or its AR rendering. Snap's
+WebXR documentation says Browser Lens should appear in Lens Explorer, but the
+actual Snap OS version, pairing/account, and Wi-Fi/catalog state are still
+unknown. Read-only ADB attempts to inspect the OS and package list via
+`adb shell` returned `error: closed`, despite `adb devices` showing `device`;
+do not treat USB ADB transport as general shell/app access or attempt a bypass.
+Next have the wearer check the Spectacles (2024) companion app for Snap OS
+version/update availability and confirm whether other Lens Explorer tiles
+load. No on-glasses bounding box has yet been observed.
+
+The wearer switched to a second pair on 2026-09-26. ADB now reports serial
+`41201FBM43529613_app` as `device`, model `Snap_matador`. The local test
+server still returned HTTP 200 on port 8787, and `adb reverse tcp:8787
+tcp:8787` was established for this pair (`UsbFfs tcp:8787 tcp:8787`). The
+wearer can try `http://localhost:8787` **inside Browser Lens** and select
+`Start AR bounding box`. Visual rendering remains unverified.
+
+On the second pair, entering `http://127.0.0.1:8787/index.html` in Browser
+Lens produced a white screen. At the time of that attempt, the laptop HTTP
+server logged TLS ClientHello bytes and HTTP 400 responses on port 8787,
+which is evidence the client attempted HTTPS against the plain-HTTP server.
+The only subsequent `GET /index.html` 200 was generated by a laptop `curl`
+diagnostic, not confirmed from the glasses. This suggests Browser Lens may
+upgrade that numeric loopback URL to HTTPS, but the behavior has not been
+isolated. Test explicit `http://localhost:8787/` next while watching logs;
+do not claim page delivery or AR display on the second pair yet.
+
+Follow-up terminal check: the second pair remains `device` in ADB, reverse
+forwarding remains `UsbFfs tcp:8787 tcp:8787`, and a laptop `curl` of the
+page returns HTTP 200 (`text/html`, 1279 bytes). The server logged another TLS
+ClientHello/HTTP 400 at 12:53:16 local time, consistent with the Browser
+attempt, but no confirmed successful page request from the glasses. A
+read-only `adb shell getprop` on the second pair also returned `error: closed`.
+Thus host USB/transport and local server health are verified; actual Browser
+page loading and WebXR remain unverified.
+
+When the wearer later retried `http://localhost:8787/`, they reported it
+opened as a Google browser/search rather than the test page. At that point
+the previous local HTTP server process had exited (`curl` connection refused).
+The server was restarted on 127.0.0.1:8787; ADB reverse remained active.
+This means that particular retry cannot establish whether Browser Lens
+supports the loopback URL. Verify server liveness immediately before further
+tests, and distinguish Browser toolbar URL navigation from a Google page's
+search box.
+
+Current check on the second pair: ADB still reports `41201FBM43529613_app`
+as `device`, reverse forwarding still maps `tcp:8787 -> tcp:8787`, and the
+local server returns HTTP 200. Its log at 12:57:42 local time contains
+`GET /` and `GET /bbox.js`, both 200, but the basic Python server log does
+not identify the client, so these cannot be attributed confidently to
+Browser Lens rather than laptop Chrome. A later `GET /` came from a laptop
+`curl` health check. No wearer-confirmed AR display or full glasses page
+load yet.
+
+---
+
+# 29. Spectacles Dimensional OS / AprilTag review (2026-09-26)
+
+`docs/spectacles_dimensional_os_adaptation.md` records the reviewed upstream
+`V4C38/spectacles-dimensional-os` commit `ebf1d38` and exact source links.
+The upstream Go2 path is tested, but its G1 path is explicitly untested. Its
+valuable reusable pattern is Lens `CameraModule` capture, timestamp-matched
+pose history, camera extrinsic/intrinsics, binary JPEG transport, and host
+AprilTag 36h11 detection with quality gates and revisit correction. The
+upstream Lens protocol is **not** directly compatible with our smaller ROS
+WebSocket bridge, and its navigation/command code must not be connected to
+the G1. MIT code reuse requires preserving the license notice.
+
+Connection detail from upstream README and source: the developer opens its
+Lens Studio `.esproj` and sends that **custom Lens** to Spectacles; its Lens
+wizard asks for the computer's Bridge IP, and `WebSocketTransport` connects
+using `InternetModule.createWebSocket("ws://<bridge-ip>:8787")`. The Mac,
+Spectacles, and robot are on the same Wi-Fi. The bridge binds `0.0.0.0` by
+default and warns that binding `127.0.0.1` prevents Spectacles from
+connecting. Its README explicitly says not to enter `127.0.0.1` as the
+Bridge IP. This is distinct from our Browser Lens/WebXR page and USB
+`adb reverse` experiment. Snap's wired USB development path is Lens Studio
+pushing a Draft Lens, not arbitrary browser navigation; its Wi-Fi path needs
+same-network reachability without client isolation.
+
+For our G1, a robot-mounted tag belongs under a **measured** static
+`torso_link -> april_tag_0` TF, not a copied upstream `base_link`/pelvis
+offset: the waist joints move the torso. RTAB-Map and the URDF chain then
+provide dynamic `map -> april_tag_0`; leave the localization YAML tag pose
+unset and disable this package's tag TF publisher. The current registration
+node is valid for this path only while the robot stands still, because it
+looks up latest TF at packet arrival rather than synchronized image time.
+Runtime drift correction is not implemented yet.
+
+The user-linked AprilRobotics `tag36_11_00000.png` is the 10×10 canonical
+pattern, with an 8×8 black detection marker. It is ID 0 in OpenCV's
+`DICT_APRILTAG_36h11`. OpenCV's generated image was 180° rotated relative to
+the canonical PNG; the laptop print-scale SVG was regenerated to match the
+canonical orientation, verified cell-for-cell. Upstream's suggested 70 mm
+*outer* print has only a 56 mm black detection square. Always configure the
+measured black edge, not the paper/white-margin edge, and measure the tag
+mount transform after installation.

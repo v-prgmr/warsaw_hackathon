@@ -1,0 +1,9 @@
+# Small, laptop-only layer on the existing ROS Humble image. The standard G1
+# container is intentionally left unchanged; no robot connection is required.
+FROM g1-humble:latest
+
+# Ubuntu apt mirrors were unavailable during preparation. Keep this dependency
+# isolated from the system Python and pinned to the API tested by the bridge.
+RUN python3 -m pip install --disable-pip-version-check --no-cache-dir \
+    --target /opt/spectacles_python 'websockets==10.4'
+ENV PYTHONPATH=/opt/spectacles_python

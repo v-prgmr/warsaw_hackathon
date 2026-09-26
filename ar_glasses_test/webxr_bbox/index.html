@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spectacles bounding-box test</title>
+  <style>
+    body { margin: 0; padding: 28px; background: #101820; color: #f5fbff;
+           font: 18px/1.5 system-ui, sans-serif; }
+    main { max-width: 650px; margin: auto; }
+    button { background: #2ce6d0; color: #05211f; border: 0; border-radius: 12px;
+             padding: 16px 22px; font: bold 19px system-ui; }
+    button:disabled { opacity: .5; }
+    #status { white-space: pre-wrap; }
+    canvas { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Bounding-box test</h1>
+    <p>Put on the Spectacles, look at an open area, then select Start AR.
+       A cyan wireframe box should appear about 1.5 m ahead and stay in that
+       spot when you move your head. It is a test box, not object detection.</p>
+    <button id="start" disabled>Checking WebXR…</button>
+    <p id="status" role="status">Checking browser support.</p>
+    <p>No camera frames, microphone, robot data, or head poses leave the device.
+       This page has no analytics or external script dependencies.</p>
+  </main>
+  <canvas id="xr-canvas"></canvas>
+  <script src="bbox.js"></script>
+</body>
+</html>

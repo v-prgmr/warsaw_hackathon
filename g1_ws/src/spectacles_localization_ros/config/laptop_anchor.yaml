@@ -1,0 +1,19 @@
+# G1-free bench test: the printed/screen tag defines the laptop reference.
+# T_laptop_tag is identity by *definition*: laptop origin = centre of tag,
+# axes = printed tag axes. Keep the tag rigid relative to the laptop.
+tag:
+  id: 0
+  size_m: 0.16                   # measure the displayed/printed black square
+frames:
+  map: laptop
+  tag: april_tag_0
+  world: spectacles_world
+  spectacles: spectacles
+tag_pose_map: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+publish_tag_tf: true
+registration:
+  minimum_detections: 10
+  timeout_sec: 10.0
+  tracking_timeout_sec: 1.0
+  max_translation_residual_m: 0.25
+  max_angular_residual_deg: 15.0
