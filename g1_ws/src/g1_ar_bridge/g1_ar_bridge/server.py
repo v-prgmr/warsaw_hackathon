@@ -213,8 +213,12 @@ class ArBridgeServer:
     async def on_camera_info(self, ws, msg):
         K = np.array([[float(msg["fx"]), 0.0, float(msg["cx"])],
                       [0.0, float(msg["fy"]), float(msg["cy"])], [0.0, 0.0, 1.0]])
-        self.camera[id(ws)] = (K, int(msg["width"]), int(msg["height"]))
-        self.log(f"[ar_bridge] camera_info {msg['width']}x{msg['height']} fx={K[0, 0]:.0f}")
+        cam = (K, int(msg["width"]), int(msg["height"]))
+        old = self.camera.get(id(ws))
+        # the Lens re-sends camera_info whenever its capture pipeline restarts: log changes only
+        if old is None or old[1:] != cam[1:] or not np.allclose(old[0], K):
+            self.log(f"[ar_bridge] camera_info {msg['width']}x{msg['height']} fx={K[0, 0]:.0f}")
+        self.camera[id(ws)] = cam
         if id(ws) not in self.policy_sent:
             self.policy_sent.add(id(ws))
             # detection range for a tag of >= 20 px, +25 % like upstream
