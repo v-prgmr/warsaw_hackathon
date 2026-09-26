@@ -1,2 +1,3 @@
 bags/*
 !bags/.gitkeep
+.vscode/*
