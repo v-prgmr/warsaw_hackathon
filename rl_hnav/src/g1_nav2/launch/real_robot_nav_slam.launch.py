@@ -25,6 +25,11 @@ So we default:
 Important:
   - use_sim_time MUST be false on real robot (unless you have /clock).
   - slam_toolbox should own map->odom (we keep publish_map_odom_identity=false in the bridge).
+
+Next to the team's g1_sensors + g1_mapping stack (AGENTS.md §6), RTAB-Map owns /map and
+map->odom and g1_sensors owns the LiDAR frame:
+  use_slam:=false publish_odom_tf:=false publish_lidar_tf:=false override_scan_stamp:=false
+and sync this PC's clock to the robot (their /tf is on the robot clock).
 """
 
 import os
@@ -100,6 +105,12 @@ def generate_launch_description():
     range_max = LaunchConfiguration("range_max")
     transform_tolerance = LaunchConfiguration("transform_tolerance")
 
+    # Switches to run next to g1_sensors + g1_mapping (see the docstring)
+    use_slam = LaunchConfiguration("use_slam")
+    publish_odom_tf = LaunchConfiguration("publish_odom_tf")
+    publish_lidar_tf = LaunchConfiguration("publish_lidar_tf")
+    override_scan_stamp = LaunchConfiguration("override_scan_stamp")
+
     # -------------------------
     # Paths
     # -------------------------
@@ -145,6 +156,10 @@ def generate_launch_description():
             "range_min": range_min,
             "range_max": range_max,
             "transform_tolerance": transform_tolerance,
+
+            "publish_odom_tf": publish_odom_tf,
+            "publish_lidar_tf": publish_lidar_tf,
+            "override_scan_stamp": override_scan_stamp,
         }.items(),
     )
 
@@ -242,7 +257,7 @@ def generate_launch_description():
     #
     # If rl_sar is enabled, it runs in parallel, but does not block mapping.
     bridge_delayed = TimerAction(period=1.0, actions=[bridge_launch])
-    slam_delayed = TimerAction(period=4.0, actions=[slam])
+    slam_delayed = TimerAction(period=4.0, actions=[slam], condition=IfCondition(use_slam))
     nav2_delayed = TimerAction(period=15.0, actions=[nav2])
 
     return LaunchDescription([
@@ -302,13 +317,21 @@ def generate_launch_description():
             description="LiDAR frame (from PointCloud2 header.frame_id)",
         ),
 
-        # Static TF base_frame -> lidar_frame (tune later)
+        # Static TF base_frame -> lidar_frame: G1 URDF chain, robot standing (MID-360 upside down)
         DeclareLaunchArgument("x", default_value="0.0"),
         DeclareLaunchArgument("y", default_value="0.0"),
-        DeclareLaunchArgument("z", default_value="0.0"),
-        DeclareLaunchArgument("roll", default_value="0.0"),
-        DeclareLaunchArgument("pitch", default_value="0.0"),
+        DeclareLaunchArgument("z", default_value="0.472"),
+        DeclareLaunchArgument("roll", default_value="3.14159265"),
+        DeclareLaunchArgument("pitch", default_value="0.065"),
         DeclareLaunchArgument("yaw", default_value="0.0"),
+
+        # Running next to g1_sensors + g1_mapping (see the docstring)
+        DeclareLaunchArgument("use_slam", default_value="true",
+                              description="slam_toolbox owns /map + map->odom. "
+                                          "false when g1_mapping (RTAB-Map) runs."),
+        DeclareLaunchArgument("publish_odom_tf", default_value="true"),
+        DeclareLaunchArgument("publish_lidar_tf", default_value="true"),
+        DeclareLaunchArgument("override_scan_stamp", default_value="true"),
 
         # pointcloud_to_laserscan tuning
         DeclareLaunchArgument("min_height", default_value="-0.2"),

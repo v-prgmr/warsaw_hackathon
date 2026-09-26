@@ -45,6 +45,16 @@ So default TF chain becomes:
     livox_frame
 
 --------------------------------------------------------------
+Next to the team's g1_sensors + g1_mapping stack (AGENTS.md §6):
+
+    publish_odom_tf:=false      g1_mapping owns odom -> robot_center (+ /odom)
+    publish_lidar_tf:=false     g1_sensors owns livox_frame (G1 URDF chain)
+    override_scan_stamp:=false  their /tf is stamped on the ROBOT clock; restamping
+                                /scan with this PC's clock breaks the TF lookup
+
+Their TF is on the robot clock, while Nav2 checks transforms against this PC's clock:
+sync this PC's clock to the robot first (it was ~76 s ahead on 2026-09-26).
+--------------------------------------------------------------
 IMPORTANT:
 This launch DOES NOT start debug/probe nodes.
 It is strictly for production runtime.
@@ -52,9 +62,11 @@ It is strictly for production runtime.
 """
 
 from launch import LaunchDescription
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch.actions import DeclareLaunchArgument, TimerAction, ExecuteProcess
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -90,7 +102,9 @@ def generate_launch_description():
     # 4️⃣ Static transform parameters (extrinsics)
     # ==========================================================
     # Used to define LiDAR pose relative to base frame.
-    # Default = zero (must be calibrated later).
+    # Default = G1 29-DoF rev 1.0 URDF chain, robot standing (g1_sensors, checked live):
+    # the MID-360 is mounted UPSIDE DOWN, 0.47 m above robot_center (the pelvis).
+    # The old all-zero default mirrored /scan left-right.
     x = LaunchConfiguration("x")
     y = LaunchConfiguration("y")
     z = LaunchConfiguration("z")
@@ -107,6 +121,11 @@ def generate_launch_description():
     range_min = LaunchConfiguration("range_min")
     range_max = LaunchConfiguration("range_max")
     transform_tolerance = LaunchConfiguration("transform_tolerance")
+
+    # Switches to run next to g1_sensors + g1_mapping (see the docstring)
+    publish_odom_tf = LaunchConfiguration("publish_odom_tf")
+    publish_lidar_tf = LaunchConfiguration("publish_lidar_tf")
+    override_scan_stamp = LaunchConfiguration("override_scan_stamp")
 
 
     # ==========================================================
@@ -127,6 +146,7 @@ def generate_launch_description():
         executable="odom_tf_bridge",
         name="real_odom_tf_bridge",
         output="screen",
+        condition=IfCondition(publish_odom_tf),
         parameters=[{
             "use_sim_time": use_sim_time,
             "input_odom_topic": input_odom_topic,
@@ -147,14 +167,17 @@ def generate_launch_description():
     #
     # Uses ROS2 built-in static_transform_publisher
     #
+    # Named arguments: the positional form is "x y z YAW PITCH ROLL", so passing
+    # "x y z roll pitch yaw" positionally put the roll into the yaw.
     static_tf_base_to_lidar = ExecuteProcess(
         cmd=[
             "ros2", "run", "tf2_ros", "static_transform_publisher",
-            x, y, z,              # translation
-            roll, pitch, yaw,     # rotation (radians)
-            base_frame, lidar_frame
+            "--x", x, "--y", y, "--z", z,                        # translation
+            "--roll", roll, "--pitch", pitch, "--yaw", yaw,      # rotation (radians)
+            "--frame-id", base_frame, "--child-frame-id", lidar_frame,
         ],
         output="screen",
+        condition=IfCondition(publish_lidar_tf),
     )
 
 
@@ -208,7 +231,7 @@ def generate_launch_description():
         parameters=[{
             "input_scan_topic": "/scan_raw",
             "output_scan_topic": "/scan",
-            "override_stamp": True,
+            "override_stamp": ParameterValue(override_scan_stamp, value_type=bool),
         }],
     )
 
@@ -234,13 +257,24 @@ def generate_launch_description():
         DeclareLaunchArgument("base_frame", default_value="robot_center"),
         DeclareLaunchArgument("lidar_frame", default_value="livox_frame"),
 
-        # Static TF initial guess
+        # Static TF: G1 URDF chain, robot standing (MID-360 upside down)
         DeclareLaunchArgument("x", default_value="0.0"),
         DeclareLaunchArgument("y", default_value="0.0"),
-        DeclareLaunchArgument("z", default_value="0.0"),
-        DeclareLaunchArgument("roll", default_value="0.0"),
-        DeclareLaunchArgument("pitch", default_value="0.0"),
+        DeclareLaunchArgument("z", default_value="0.472"),
+        DeclareLaunchArgument("roll", default_value="3.14159265"),
+        DeclareLaunchArgument("pitch", default_value="0.065"),
         DeclareLaunchArgument("yaw", default_value="0.0"),
+
+        # Switches for running next to g1_sensors + g1_mapping
+        DeclareLaunchArgument("publish_odom_tf", default_value="true",
+                              description="odom -> base_frame + /odom from /dog_odom. "
+                                          "false when g1_mapping runs."),
+        DeclareLaunchArgument("publish_lidar_tf", default_value="true",
+                              description="static base_frame -> lidar_frame. "
+                                          "false when g1_sensors runs."),
+        DeclareLaunchArgument("override_scan_stamp", default_value="true",
+                              description="restamp /scan with this PC's clock. "
+                                          "false when /tf is on the robot clock."),
 
         # Cloud->scan tuning
         DeclareLaunchArgument("min_height", default_value="-0.2"),
