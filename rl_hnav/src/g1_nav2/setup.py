@@ -24,6 +24,10 @@ setup(
         (os.path.join('share', package_name, 'params'),
          glob('params/*.yaml')),
 
+        # Behavior trees for the RTAB-Map launches (no BackUp)
+        (os.path.join('share', package_name, 'behavior_trees'),
+         glob('behavior_trees/*.xml')),
+
         # Lightweight simulation RViz view
         (os.path.join('share', package_name, 'rviz'),
          glob('rviz/*.rviz')),

@@ -45,11 +45,11 @@ Terminal B — RTAB-Map (owns `map -> odom -> robot_center`, `/map`, `/cloud_map
 ```bash
 ros2 launch g1_mapping mapping.launch.py static_tf:=false     # live: g1_sensors owns the URDF TF
 ```
-Terminal C — `/scan` for Nav2 (rl_hnav pipeline, its TF/SLAM **off** so it doesn't fight RTAB-Map, §14):
+Terminal C — `/scan` for Nav2 (rl_hnav pipeline, its `/odom` and TF **off** so it doesn't fight RTAB-Map, §14):
 ```bash
 # either the standalone scan pipeline (rl_hnav/README.md) or:
-ros2 launch rl_hnav real_robot_bridge.launch.py \
-  publish_odom_tf:=false publish_lidar_tf:=false override_scan_stamp:=false use_slam:=false
+ros2 launch humanoid_nav_bridge real_robot_bridge.launch.py \
+  publish_odom_tf:=false publish_lidar_tf:=false override_scan_stamp:=false
 ```
 Now **drive the G1 slowly with the vendor remote** to cover the area (a small loop helps closures).
 Watch `/map` fill and ICP loop closures in Terminal B.
@@ -97,7 +97,9 @@ only logs (never `--enabled=true` here). Optionally verify clamping with a synth
 
 ## STOP — motor gate
 All four gates green? The next action is **Stage 4** (first enabled motion, a few cm) in
-`g1_loco_cmdvel/README.md`, then the live Nav2 goal (G5 in the chat runbook). Those move motors:
+`g1_loco_cmdvel/README.md`, then the live Nav2 goal (G5 in the chat runbook) with
+`ros2 launch g1_nav2 rtabmap_nav_live.launch.py max_vx:=0.05 max_wz:=0.10` (the dry run's live twin;
+match the gateway limits, rl_hnav/README.md). Those move motors:
 2 people, harness, remote operator ready with the damping combo (Ctrl-C is **not** an e-stop). Do
 not proceed here.
 

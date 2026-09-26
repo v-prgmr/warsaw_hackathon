@@ -234,7 +234,7 @@ metric 3D scene
 Nav2
 ```
 
-`rl_hnav`'s existing SLAM Toolbox setup remains a useful fallback/reference, but **do not run SLAM Toolbox and RTAB-Map simultaneously if both publish `map -> odom`**.
+`rl_hnav`'s SLAM Toolbox setup remains in simulation only (`g1_nav2 slam_mapping.launch.py`) as a reference; its real-robot launch (`real_robot_nav_slam.launch.py`, `/dog_odom` odometry) was removed on 2026-09-26. **Do not run SLAM Toolbox and RTAB-Map simultaneously if both publish `map -> odom`**.
 
 If RTAB-Map's navigation-map path proves unstable during the hackathon, a permitted fallback is:
 
@@ -261,7 +261,7 @@ The robot only publishes raw sensor streams. Everything else comes from nodes **
 | `/cmd_vel` → legs | Nav2 → `g1_loco_cmdvel` (`cmd_vel_gateway` → `g1_loco_client` → Loco `SetVelocity`; disabled by default, §13), or `rl_hnav` under §25 |
 | frontier goals | `explore_lite` (m-explore) |
 
-When `rl_hnav`'s real-robot bridge (§14) runs together with `g1_mapping`, **disable** its `odom_tf_bridge` (`odom -> robot_center`), its static `robot_center -> lidar` transform, and SLAM Toolbox (launch args `publish_odom_tf:=false publish_lidar_tf:=false override_scan_stamp:=false`, plus `use_slam:=false` in `real_robot_nav_slam.launch.py`). Keep its `/scan` pipeline and `/cmd_vel` consumer. Two publishers of the same transform make TF jump; `/dog_odom` is also ~2× short (§8).
+When `rl_hnav`'s real-robot bridge (`humanoid_nav_bridge real_robot_bridge.launch.py`, §14) runs together with `g1_mapping`, **disable** its `odom_tf_bridge` (`/odom` + `odom -> robot_center`) and its static `robot_center -> lidar` transform (launch args `publish_odom_tf:=false publish_lidar_tf:=false override_scan_stamp:=false`). Keep its `/scan` pipeline. Nav2 on the robot runs only from `g1_nav2 rtabmap_nav_dry_run.launch.py` / `rtabmap_nav_live.launch.py` (§15); the SLAM Toolbox real-robot launch was removed on 2026-09-26. Two publishers of the same transform make TF jump; `/dog_odom` is also ~2× short (§8).
 
 ---
 
@@ -732,7 +732,7 @@ rl_hnav
 
 The static LiDAR extrinsic in `rl_hnav` was fixed on 2026-09-26. Its default is now the G1 URDF chain (z 0.472 m, roll π, pitch 0.065): the old all-zero default mirrored `/scan` left-right, and the static-TF call had swapped roll and yaw.
 
-**With `g1_mapping` running (default), use only the `/scan` part and the `/cmd_vel` consumer of this bridge.** Disable `odom_tf_bridge`, the static `robot_center -> lidar` transform, and SLAM Toolbox (`publish_odom_tf:=false publish_lidar_tf:=false override_scan_stamp:=false`, `use_slam:=false`), or run only `pointcloud_to_laserscan` + `scan_restamper` as in `rl_hnav/README.md`; `g1_mapping` owns `/odom`, `odom -> robot_center`, `/map`, and `map -> odom` (§6 ownership table).
+**With `g1_mapping` running (default), use only the `/scan` part and the `/cmd_vel` consumer of this bridge.** Disable `odom_tf_bridge` and the static `robot_center -> lidar` transform (`publish_odom_tf:=false publish_lidar_tf:=false override_scan_stamp:=false`), or run only `pointcloud_to_laserscan` + `scan_restamper` as in `rl_hnav/README.md`; `g1_mapping` owns `/odom`, `odom -> robot_center`, `/map`, and `map -> odom` (§6 ownership table).
 
 ---
 
@@ -774,7 +774,8 @@ Capture after the robot has stopped / settled.
 
 **Command-only testing before any walking goal** (`rl_hnav/README.md`, 2026-09-26):
 
-- `ros2 launch g1_nav2 rtabmap_nav_dry_run.launch.py`: Nav2 on the RTAB-Map `/map` + our TF, with no SLAM Toolbox, odom bridge, or locomotion node. The controller writes to `/g1_nav2_dry_run/cmd_vel_raw`, and the smoother and recoveries write to `/g1_nav2_dry_run/cmd_vel`. Check that `/cmd_vel` has **zero publishers** before sending a goal.
+- `ros2 launch g1_nav2 rtabmap_nav_dry_run.launch.py`: Nav2 on the RTAB-Map `/map` + our TF, with no SLAM Toolbox, odom bridge, or locomotion node. The controller and recoveries write to `/g1_nav2_dry_run/cmd_vel_raw`, and the smoother writes `/g1_nav2_dry_run/cmd_vel`. Check that `/cmd_vel` has **zero publishers** before sending a goal.
+- `ros2 launch g1_nav2 rtabmap_nav_live.launch.py`: the same nodes and parameters, but the smoother publishes `/cmd_vel` (its only publisher). Limits `max_vx` ≤ 0.10 m/s and `max_wz` ≤ 0.20 rad/s (the `cmd_vel_gateway` clamps) apply to the controller, smoother and spin recovery; nothing reverses (no BackUp). The controller is Regulated Pure Pursuit, because DWB never turned toward a goal behind the robot at these limits. Only after Stage 4 and the §19 gates.
 - `ros2 run g1_nav2 check_rtabmap_plan`: a read-only preflight. It checks TF, `/scan`, costmaps and fresh `/battery_state`, then calls `ComputePathToPose` only. A standing-only map reports `NOT READY`: survey with the vendor remote first.
 - explore_lite, command-only: on a harness-supported stationary G1 it found a frontier and Nav2 accepted the goal (2026-09-26), with the Loco client off. The local m-explore patch keeps the active goal while SLAM updates; `progress_timeout` is 60 s.
 

@@ -511,9 +511,9 @@ Run these in separate terminals, then launch Nav2 in **command-only** mode:
 ros2 launch g1_nav2 rtabmap_nav_dry_run.launch.py
 ```
 
-This launch leaves `/cmd_vel` unpublished: controller output goes to
-`/g1_nav2_dry_run/cmd_vel_raw`, and the smoother and recovery behaviors publish
-to `/g1_nav2_dry_run/cmd_vel`. Verify `/cmd_vel` has **zero publishers** before
+This launch leaves `/cmd_vel` unpublished: the controller and recovery
+behaviors write `/g1_nav2_dry_run/cmd_vel_raw`, and the velocity smoother writes
+`/g1_nav2_dry_run/cmd_vel`. Verify `/cmd_vel` has **zero publishers** before
 sending any test goal. It does not start locomotion, SLAM Toolbox, or an odom
 bridge. The scan relay subscribes best-effort and publishes reliably for Nav2
 costmaps; with synchronized clocks it keeps the original LiDAR stamp.
@@ -550,6 +550,34 @@ ros2 run g1_nav2 check_rtabmap_plan
 It requires the `g1_sensors` `/lf/bmsstate` bridge (`/battery_state`), fresh TF,
 scan and costmaps, then calls **ComputePathToPose only** to find a short path
 through known free space. A standing-only map correctly reports `NOT READY`.
+
+### Live Nav2 on RTAB-Map (moves the robot only with the Loco client enabled)
+
+`rtabmap_nav_live.launch.py` is the live twin of the dry run: the same nodes and
+parameters (`g1_nav2/rtabmap_nav.py`, `params/nav2_g1_rtabmap.yaml`), still no
+SLAM Toolbox, odom bridge or locomotion node. The only difference is the output:
+the velocity smoother publishes `/cmd_vel`, and it is the only `/cmd_vel`
+publisher. `g1_loco_cmdvel` turns that into Loco `SetVelocity` only when its
+gateway and client are both enabled (`g1_loco_cmdvel/README.md`).
+
+```bash
+ros2 run g1_nav2 check_rtabmap_plan            # BEFORE the live launch: it refuses while /cmd_vel exists
+ros2 launch g1_nav2 rtabmap_nav_live.launch.py max_vx:=0.05 max_wz:=0.10   # = the gateway limits
+ros2 topic info /cmd_vel -v --no-daemon        # 1 publisher (velocity_smoother), 1 subscriber (gateway)
+```
+
+Both RTAB-Map launches share these settings:
+
+- Speed limits `max_vx` (default 0.10 m/s) and `max_wz` (default 0.20 rad/s) apply to
+  the controller, the smoother and the spin recovery. They are the
+  `cmd_vel_gateway` clamps, and the launch refuses larger values. Set them to the
+  gateway's limits when it runs tighter (0.05 / 0.10 in the Stage 4 procedure).
+- Never backwards: no reversing in the controller or smoother, and the behavior
+  trees (`behavior_trees/*_g1.xml`) drop BackUp. Recoveries also pass the smoother.
+- Controller: Regulated Pure Pursuit, which turns in place when the path is more
+  than 0.5 rad off the heading. At these limits DWB never turned toward a goal
+  behind the robot. In an isolated test with a kinematic fake robot, goals ahead,
+  behind and to the side succeeded at 0.10 / 0.20 and at 0.05 / 0.10.
 
 ## Real robot (Unitree G1 / G1 EDU23) — staged testing
 
