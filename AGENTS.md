@@ -959,6 +959,7 @@ Preferred project split:
 g1_sensors
 g1_recorder
 g1_mapping / rtabmap_bringup
+ar_glasses            # Snap Spectacles AR view (§27): mock bridge now, g1_ar_bridge next
 g1_loco_cmdvel        # /cmd_vel -> high-level Loco SetVelocity, safety-gated (§13)
 scene_server
 semantic_query
@@ -1466,3 +1467,46 @@ Agents must never "fix and retry" after an incident, and must not delete or rota
 - M5 (autonomous survey): gated by 25.1 / 25.3. Decide early whether to use high-level Loco client (fewer requirements) or `rl_hnav` (harness trial + supervisor first). Budget time for the harness trial and supervisor dry-run.
 - Mounting extra sensors: <= 1 kg, non-destructive, no occluding of existing sensors.
 - Recording (M0): `rosbag2` and supervisor logs run on the dev machine or a non-critical thread; do not add load to the command path.
+
+---
+
+# 27. AR Glasses (Snap Spectacles 2024)
+
+Decided 2026-09-26 (team request): a person wearing **Snap Spectacles (2024)** sees what the G1
+knows, in place in the room: the robot, its path, the LiDAR map, and semantic POIs / 3D boxes
+(M4 output). Guide and code: `ar_glasses/README.md`.
+
+**Base:** the MIT-licensed Lens of [spectacles-dimensional-os](https://github.com/V4C38/spectacles-dimensional-os),
+pinned at commit `ebf1d38`, Lens Studio **5.15.4** (the last Lens Studio line for Spectacles 2024).
+Its Lens connects over Wi-Fi to a bridge: `ws://<laptop IP>:8787` (port fixed in the Lens),
+protocol **v19** (the Lens rejects any other version), JSON lines + binary LiDAR / camera frames.
+The upstream clone lives in the git-ignored `ar_glasses/upstream/` (its Lens packages are Git LFS).
+
+```text
+Lens Studio (Windows/macOS only) ──USB-C, once──► Spectacles Drafts (persists across laptop / OS)
+Spectacles ──Wi-Fi──► bridge:  mock_bridge.py (no robot)  →  upstream dimos-ar (ROBOT_IP=fake)
+                               →  g1_ar_bridge (ROS 2, our stack; next)
+```
+
+- **Frames:** the protocol's AR world frame is metres, Y up, marker +X forward, quaternions
+  `[x, y, z, w]`. `g1_ar_bridge` will hold one `T_ar_map`, from the upstream AprilTag alignment
+  (tags on the G1 torso; their pose relative to `torso_link` measured and recorded like any other
+  glue frame, §10.1) and publish nothing into our TF tree except, optionally, `map -> ar_world`.
+  POIs are converted from `map` (never unlabelled coordinates, §10.1).
+- **Showing POIs:** the Lens's `draw_world_annotation` skill (labelled markers, polylines,
+  colours) needs no Lens change; 3D boxes are polylines. `mock_bridge.py --demo-pois` shows it.
+- **Safety:** the glasses are a viewer. Navigation goals from the glasses are ignored by default
+  in `g1_ar_bridge`; enabling them is M5 actuation under §19 / §25. Never run the upstream
+  Dimensional OS stack against the real G1 next to ours: it is a second robot stack with its own
+  map and it can walk the robot (§6).
+- **Network:** glasses and laptop on the same Wi-Fi (event Wi-Fi often isolates clients: use a
+  phone hotspot or a router). The laptop keeps Ethernet to the robot.
+
+Status (2026-09-26): `ar_glasses/mock_bridge` (Python + `websockets`, Windows / Ubuntu / macOS)
+implements the v19 flows the Lens uses: handshake, clock ping, manual and mock-AprilTag
+registration, pose stream, simulated walking to goals with path and nav status, emergency stop,
+synthetic LiDAR (full / obstacles), camera-frame acks, agent replies, demo POIs + box with retry
+while the Lens is still in its wizard. Checked against upstream `PROTOCOL.md` and the Lens parser
+(`Protocol.ts`, `ArSkillHandlers.ts`); 10 protocol tests pass on websockets 10.4 / 12.0 / 17.1.
+**Not yet run with the real glasses.** Next: deploy from Windows (guide Part 1), then
+`g1_ar_bridge` on Ubuntu.
