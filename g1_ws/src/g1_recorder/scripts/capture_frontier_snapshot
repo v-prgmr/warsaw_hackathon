@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# A short, non-actuating MCAP capture for inspecting RTAB-Map and frontiers.
+# Ctrl-C the foreground launch to finalize its bag.
+set -euo pipefail
+
+usage() {
+  printf 'Usage: ros2 run g1_recorder capture_frontier_snapshot [--output-dir NEW_BAG_PATH]\n'
+}
+
+output_dir="${HOME}/g1_frontier_snapshots/frontier_$(date +%Y%m%d_%H%M%S_%N)"
+while (($#)); do
+  case "$1" in
+    --output-dir)
+      if (($# < 2)) || [[ -z "$2" ]]; then
+        usage >&2
+        exit 2
+      fi
+      output_dir="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if ! command -v ros2 >/dev/null; then
+  printf 'ROS 2 is not sourced; source Humble and g1_ws/install/setup.bash first.\n' >&2
+  exit 1
+fi
+if [[ -e "$output_dir" ]]; then
+  printf 'Refusing to overwrite existing bag path: %s\n' "$output_dir" >&2
+  exit 1
+fi
+mkdir -p -- "$(dirname -- "$output_dir")"
+
+printf 'Recording frontier snapshot to %s\n' "$output_dir"
+printf 'Stop with Ctrl-C to finalize MCAP. /explore/frontiers requires visualize:=true.\n'
+# record.launch.py applies config/qos_override.yaml (/map and /tf_static
+# transient-local) and uses MCAP; keep all recordings on the host.
+exec ros2 launch g1_recorder record.launch.py \
+  profile:=frontier_snapshot "output:=$output_dir"

@@ -1,0 +1,14 @@
+# Compact RTAB-Map / Nav2 / explore_lite visualization fixture. No raw robot
+# commands or sensor streams: this is for inspecting maps and frontier tuning.
+# /explore/frontiers publishes only while explore_lite runs with visualize:=true.
+topics:
+  - /map
+  - /map_updates
+  - /tf
+  - /tf_static
+  - /odom
+  - /scan
+  - /cloud_map
+  - /global_costmap/costmap
+  - /local_costmap/costmap
+  - /explore/frontiers

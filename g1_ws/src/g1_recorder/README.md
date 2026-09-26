@@ -15,6 +15,7 @@ The package has three kinds of YAML configuration. They serve different purposes
 | `config/rtab.yaml` | Camera-only topics for semantics / POI keyframes (not a mapping bag) |
 | `config/survey.yaml` | Canonical raw sensor, robot state and TF inputs |
 | `config/live_run.yaml` | Survey inputs plus observed control and common Nav2/audit outputs |
+| `config/frontier_snapshot.yaml` | Compact RTAB-Map, Nav2 costmaps, TF, and frontier markers |
 | `config/full_survey.yaml` | Legacy smaller survey profile |
 | `config/qos_override.yaml` | Preserves transient-local `/tf_static` and `/map` |
 | `config/cyclonedds_host_buffer.xml` | Optional host-only receive-buffer experiment |
@@ -297,6 +298,33 @@ ros2 launch g1_recorder record.launch.py \
 ```
 
 An explicit `topics_file` overrides `profile`.
+
+### Compact frontier snapshot (no actuation)
+
+With RTAB-Map and the command-only Nav2 stack running, start a short capture in a separate
+terminal on the wired laptop. Source Humble and `g1_ws/install/setup.bash`, and use the same
+CycloneDDS interface and `ROS_DOMAIN_ID` as the live graph:
+
+```bash
+ros2 run g1_recorder capture_frontier_snapshot
+# Or use a specific NEW bag path:
+ros2 run g1_recorder capture_frontier_snapshot --output-dir /path/to/new_frontier_bag
+```
+
+Use **one command, not both**, then Ctrl-C after about 20–30 seconds to finalize MCAP. The
+default output is `~/g1_frontier_snapshots/frontier_<timestamp>/`; an existing bag directory is
+never overwritten. This reuses `record.launch.py` and `config/qos_override.yaml` so the recorder
+started *after* mapping still receives the transient-local `/map` and `/tf_static`. It records
+`/map`, `/map_updates`, `/tf`, `/tf_static`, `/odom`, `/scan`, `/cloud_map`, both Nav2 costmaps, and
+`/explore/frontiers`. There is no `/cmd_vel` or vendor request topic in this profile.
+
+Start `explore_lite` with `visualize:=true` **while recording** to collect frontier markers;
+if none are published the bag will have no `/explore/frontiers` messages. Verify the result with
+`ros2 bag info <bag_dir>`: `/map` and `/tf_static` must have nonzero counts; check the other topic
+counts before using them for analysis. The bag captures observed ROS state, not the RTAB-Map
+database; save the database separately after stopping RTAB-Map cleanly. For frontier threshold
+experiments, preserve the explorer's `min_frontier_size` and the RViz configuration alongside the
+bag. Replay only on an **isolated DDS domain**, never on the robot's live domain 0.
 
 ## Record Takes
 

@@ -14,7 +14,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 
-PROFILES = ("rtab", "survey", "live_run", "full_survey")
+PROFILES = ("rtab", "survey", "live_run", "full_survey", "frontier_snapshot")
 
 
 def _launch_record(context, *args, **kwargs):
@@ -60,6 +60,7 @@ def generate_launch_description():
                               description="Output bag directory"),
         DeclareLaunchArgument("profile", default_value="survey",
                               description="Topic profile: survey (canonical), live_run, "
+                                          "frontier_snapshot (map/TF/frontiers), "
                                           "rtab (camera only), legacy full_survey"),
         DeclareLaunchArgument("topics_file", default_value="",
                               description="Absolute topic YAML path; overrides profile"),

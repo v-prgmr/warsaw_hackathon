@@ -537,6 +537,9 @@ On a harness-supported stationary G1, the explorer found a frontier, Nav2
 accepted the goal, and then correctly reported no physical progress. Keep
 the Loco client **off** throughout this test; stop the explorer before
 testing high-level locomotion separately.
+The local `m-explore-ros2-success.patch` subscribes to RTAB-Map's transient-local
+`/map`: an explorer started after mapping receives the existing map immediately,
+even while the G1 stands still.
 Once surveyed, while the same read-only stack and dry Nav2 launch are running,
 check for a short path and fresh battery without sending any walking goal:
 

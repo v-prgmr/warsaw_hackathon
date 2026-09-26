@@ -9,7 +9,7 @@ install(
 )
 
 install(
-  PROGRAMS scripts/discover_sensors.sh
+  PROGRAMS scripts/discover_sensors.sh scripts/capture_frontier_snapshot
   DESTINATION lib/${PROJECT_NAME}
 )
 
