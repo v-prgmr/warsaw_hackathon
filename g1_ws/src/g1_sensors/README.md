@@ -35,7 +35,7 @@ ros2 launch g1_sensors tf_chain.launch.py                 # rviz:=true for Robot
 ros2 launch g1_mapping mapping.launch.py static_tf:=false
 ```
 
-The `tf_chain` launch is the **single runtime owner** of the provisional
+The `tf_chain` launch is the **single runtime owner** of the LiDAR-validated provisional
 `camera_link -> oak-d-base-frame` mount TF. Keep the RealSense and OAK-D drivers running for
 their own camera-internal `/tf_static` links. After starting `tf_chain`, inspect the mount
 and the connected optical frames with:
@@ -45,8 +45,9 @@ ros2 run tf2_ros tf2_echo camera_link oak-d-base-frame
 ros2 run tf2_ros tf2_echo camera_color_optical_frame oak_rgb_camera_optical_frame
 ```
 
-The calibration artifact is also stored on the G1 at
-`/home/unitree/g1_calibration/oakd_realsense_provisional.yaml` for recovery. It is **data**, not
+The current calibration artifact is stored on the G1 at
+`/home/unitree/g1_calibration/oakd_livox_provisional.yaml` for recovery; the prior
+RGB-derived result is retained separately. This artifact is **data**, not
 a second publisher: do not run an additional `static_transform_publisher` on the Orin for this
 child frame while `tf_chain` is running.
 
@@ -60,6 +61,78 @@ ros2 bag play <bag> --clock 200
 ```
 
 Topic names, the joint order, and the glue frames live in `config/g1_sensors.yaml`.
+
+## Offline OAK-D depth ↔ MID-360 LiDAR extrinsic check
+
+`register_oak_livox` reads **two finalized MCAP bags directly**; it does not replay data,
+publish TF, or write to the robot. One bag must be under `<capture>/oak/` with
+`/oak/stereo/image_raw`, `/oak/stereo/camera_info`, `/oak/rgb/camera_info` and
+`/tf_static`. The other must be under `<capture>/livox/` with
+`/utlidar/cloud_livox_mid360` and `/tf_static` from `g1_sensors tf_chain` (including
+the existing provisional `camera_link -> oak-d-base-frame` mount). Record both on the
+**same laptop clock** while the G1 stands still, even if OAK needs an isolated DDS
+domain (78) to avoid the Orin's Foxy/CycloneDDS crash on the Unitree domain (0).
+Keep raw LiDAR scans and depth messages rather than resampled map clouds.
+
+To make a repeatable stationary capture from the **wired laptop** (with the OAK
+driver already running on the Orin's `eth0` in domain 78, and LiDAR/TF in domain 0):
+
+```bash
+source /opt/ros/humble/setup.bash
+source ~/workspace/warsaw/g1_ws/install/setup.bash
+ros2 run g1_sensors capture_oak_livox --duration 25 \
+  --oak-mxid 14442C102106F1D000
+```
+
+It discovers the G1 Ethernet interface, checks both domains before recording,
+then writes `<output-root>/oak_livox_geometry_<timestamp>/{oak,livox}/` and
+`capture_info.yaml`. It stops and finalizes **only its two rosbag processes**;
+the command neither starts/stops somebody else's camera driver nor actuates the
+robot. Use different stationary G1 headings or locations in subsequent takes,
+with a room corner and box/table overlapping both depth sensors. The first
+25-second capture used roughly **1.3 GiB** of disk: check space before longer
+takes. Pass the MXID printed in the driver's startup log for the actual camera
+in each take; do not reuse this example value if the camera changes.
+
+Observed on 2026-09-26: OAK depth is `1280×720`, `16UC1` **millimetres**, in
+`oak_rgb_camera_optical_frame`, registered to RGB. Livox XYZ is in `livox_frame`;
+its ~10 Hz clouds contain many (0,0,0) points and its per-point time is in
+nanoseconds. For stationary scenes the tool accumulates scans within a window,
+filters invalid ranges, back-projects OAK Z-depth with its RGB intrinsics,
+voxel-downsamples both, crops LiDAR to the OAK frustum, and fits one shared
+point-to-point ICP transform using the existing mount only as a *rough seed*.
+The OAK MXID observed on this depth capture (`14442C102106F1D000`) differs from
+the earlier RGB calibration camera (`14442C1001EAEFD000`), so verify the physical
+camera/mount before trusting the seed.
+
+```bash
+cd ~/workspace/warsaw/g1_ws
+source /opt/ros/humble/setup.bash
+colcon build --packages-select g1_sensors
+source install/setup.bash
+ros2 run g1_sensors register_oak_livox \
+  ~/g1_camera_calibration/oak_livox_geometry_20260926_221118
+```
+
+The output is `<capture>/registration.yaml`: initial and fitted Livox↔OAK matrices,
+nearest-cloud distances, direct OAK depth-ray residuals, and temporal holdout
+results. No TF is published automatically. This recorded scene is only **one
+physical viewpoint**: its held-out seconds share the same geometry and cannot
+validate a mount update on their own. Capture several *independent* room/box views
+with full stops. Pass three or more capture directories to the same command to fit one
+shared extrinsic on all but the last: the **entire last capture is held out** as an
+independent viewpoint. The tool rejects different OAK MXIDs, camera intrinsics or
+recorded initial TFs across captures. Validate a shared transform before replacing
+the one OAK mount link. Because OAK and Livox are on the torso, the relative
+transform is constant across robot poses; never run competing publishers for
+`oak-d-base-frame`.
+If a multi-view ICP run exceeds the conservative correction bound, do not simply
+relax the limit. Use `--candidate <first_capture>/registration.yaml` with all
+three captures: this **does not refit**, but checks whether the first-view
+estimate reduces errors in both other scenes. It also writes a proposed
+`camera_link -> oak-d-base-frame` pose for **manual** review, not publication.
+The tool also saves red-before and green-after LiDAR projections onto a held-out
+OAK RGB frame next to its YAML report; check these against visible scene edges.
 
 ## Design notes
 
@@ -101,9 +174,10 @@ Topic names, the joint order, and the glue frames live in `config/g1_sensors.yam
 ## Open
 
 - `d435_link -> camera_link` identity is unverified: check in RViz when the RealSense runs.
-- OAK-D: `g1_sensors.yaml` now includes a **provisional**, ChArUco-derived
-  `camera_link -> oak-d-base-frame` mount link. Its source, optical transform and held-out
-  errors are in `config/oakd_realsense_provisional.yaml`. The OAK driver publishes the
+- OAK-D: `g1_sensors.yaml` now includes a **provisional**, OAK depth/Livox-derived
+  `camera_link -> oak-d-base-frame` mount link. Its source and independent-view errors
+  are in `config/oakd_livox_provisional.yaml`; the earlier ChArUco calibration is
+  archived in `config/oakd_realsense_provisional.yaml`. The OAK driver publishes the
   internal `oak-d-base-frame -> oak -> oak_rgb_camera_optical_frame` chain; RealSense
   publishes `camera_link -> camera_color_optical_frame`. Publish the mount link **only
   through this `tf_chain` launch**, never also through another static TF node. Check

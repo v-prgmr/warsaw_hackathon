@@ -27,6 +27,8 @@ setup(
         "console_scripts": [
             "lowstate_to_joint_states = g1_sensors.lowstate_to_joint_states:main",
             "bms_to_battery_state = g1_sensors.bms_to_battery_state:main",
+            "register_oak_livox = g1_sensors.register_oak_livox:main",
+            "capture_oak_livox = g1_sensors.capture_oak_livox:main",
         ],
     },
 )

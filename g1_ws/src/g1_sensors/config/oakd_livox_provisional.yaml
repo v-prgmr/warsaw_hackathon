@@ -1,0 +1,32 @@
+# 2026-09-26 OAK/Livox geometry update. g1_sensors.yaml is the only runtime publisher.
+status: provisional
+sensor_id: "OAK-D MXID 14442C102106F1D000"
+frames:
+  parent: camera_link
+  child: oak-d-base-frame
+  aligned_depth: oak_rgb_camera_optical_frame
+  lidar: livox_frame
+fit:
+  source_capture: oak_livox_geometry_20260926_221118
+  method: "trimmed point-to-point ICP (rough RGB TF seed; 4 training windows)"
+  correction_from_old_seed_m: 0.0385
+  correction_from_old_seed_deg: 2.906
+validation:
+  mode: "fixed candidate; not refit on either independent capture"
+  first_new_capture: oak_livox_geometry_20260926_223254
+  first_depth_ray_median_m_before: 0.0538
+  first_depth_ray_median_m_after: 0.0304
+  second_new_capture: oak_livox_geometry_20260926_224028
+  second_depth_ray_median_m_before: 0.0735
+  second_depth_ray_median_m_after: 0.0406
+  report: oak_livox_geometry_20260926_221118/registration_validated_three_views.yaml
+  caveat: "Only ~100-200 downsampled LiDAR FOV points per window; independent error remains centimetres."
+  fit_warning: "Unconstrained three-view ICP exceeded the 0.20 m guard; use the independent-validated one-view candidate."
+mount_transform:
+  translation_m: [0.2721952828855163, -0.026411977892354804, -0.1893865296161056]
+  rpy_rad: [-0.05675618657038339, -0.7214222030626185, -0.009852190144560626]
+  quaternion_xyzw: [-0.02828587339852846, -0.3526624979243263, -0.01462149605886346, 0.9352086846136843]
+runtime:
+  single_owner: g1_sensors/tf_chain.launch.py
+  requires_restart: true
+  automatically_published_by_optimizer: false

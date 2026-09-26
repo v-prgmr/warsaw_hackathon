@@ -70,9 +70,9 @@ static_transforms:
   # realsense-ros root frame (x forward, z up, like d435_link). UNVERIFIED: check in RViz when the
   # RealSense runs (its driver publishes camera_link -> optical frames on /tf_static).
   - {parent: d435_link, child: camera_link, xyz: [0.0, 0.0, 0.0], rpy: [0.0, 0.0, 0.0]}
-  # Provisional OAK-D chest extrinsic: 24-pose ChArUco take 2026-09-26 18:16, derived from
-  # camera_color_optical_frame -> oak_rgb_camera_optical_frame via BOTH drivers' /tf_static.
-  # Source, quality metrics and full precision: config/oakd_realsense_provisional.yaml.
+  # Provisional OAK-D chest extrinsic: MID-360/OAK-D depth ICP on 2026-09-26, cross-checked
+  # on two DIFFERENT room views without refitting. Source/quality: oakd_livox_provisional.yaml.
+  # The earlier RGB-derived mount is archived in oakd_realsense_provisional.yaml.
   # The OAK driver owns oak-d-base-frame -> oak -> oak_rgb_camera_optical_frame;
   # only this node owns camera_link -> oak-d-base-frame. Do not start a second publisher.
-  - {parent: camera_link, child: oak-d-base-frame, xyz: [0.302104232930424, -0.0168910079265954, -0.153149918960739], rpy: [-0.0300345757882418, -0.748448923605772, 0.0102970467354823]}
+  - {parent: camera_link, child: oak-d-base-frame, xyz: [0.2721952828855163, -0.0264119778923548, -0.189386529616106], rpy: [-0.0567561865703834, -0.721422203062619, -0.00985219014456063]}
