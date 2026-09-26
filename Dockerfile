@@ -42,6 +42,10 @@ RUN python3 /tmp/patch_tb3_waffle_rgbd.py \
 ENV TURTLEBOT3_MODEL=waffle \
     GAZEBO_MODEL_DATABASE_URI=""
 
+# Spectacles AR bridge (g1_ar_bridge, AGENTS.md §27): WebSocket server for the glasses' Lens.
+# Ubuntu 22.04's python3-websockets is 9.1; the bridge is tested with websockets 10-17.
+RUN pip3 install --no-cache-dir "websockets>=10"
+
 # Unitree ROS 2 message packages (unitree_go / unitree_hg / unitree_api).
 # On Humble the stock rmw_cyclonedds_cpp is used; no separate CycloneDDS build is needed.
 ARG UNITREE_ROS2_REF=master

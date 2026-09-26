@@ -260,6 +260,8 @@ The robot only publishes raw sensor streams. Everything else comes from nodes **
 | `/battery_state` | `g1_sensors` `bms_to_battery_state` (from `/lf/bmsstate`, SOC 0–100 → 0.0–1.0), started by `tf_chain.launch.py` |
 | `/cmd_vel` → legs | Nav2 → `g1_loco_cmdvel` (`cmd_vel_gateway` → `g1_loco_client` → Loco `SetVelocity`; disabled by default, §13), or `rl_hnav` under §25 |
 | frontier goals | `explore_lite` (m-explore) |
+| `map -> ar_tag_<id>` (wall AprilTag) | `g1_ar_bridge` `tag_anchor` (robot camera, robot standing still; §27) |
+| `map -> ar_world`, `ar_world -> spectacles`, `/ar_glasses/*` | `g1_ar_bridge` `ar_bridge` (§27) |
 
 When `rl_hnav`'s real-robot bridge (§14) runs together with `g1_mapping`, **disable** its `odom_tf_bridge` (`odom -> robot_center`), its static `robot_center -> lidar` transform, and SLAM Toolbox (launch args `publish_odom_tf:=false publish_lidar_tf:=false override_scan_stamp:=false`, plus `use_slam:=false` in `real_robot_nav_slam.launch.py`). Keep its `/scan` pipeline and `/cmd_vel` consumer. Two publishers of the same transform make TF jump; `/dog_odom` is also ~2× short (§8).
 
@@ -959,7 +961,8 @@ Preferred project split:
 g1_sensors
 g1_recorder
 g1_mapping / rtabmap_bringup
-ar_glasses            # Snap Spectacles AR view (§27): mock bridge now, g1_ar_bridge next
+ar_glasses            # Snap Spectacles guide, Lens text patch, protocol mock bridge (§27)
+g1_ar_bridge          # Spectacles bridge: wall-tag alignment, robot / LiDAR / POIs to the glasses (§27)
 g1_loco_cmdvel        # /cmd_vel -> high-level Loco SetVelocity, safety-gated (§13)
 scene_server
 semantic_query
@@ -1474,39 +1477,75 @@ Agents must never "fix and retry" after an incident, and must not delete or rota
 
 Decided 2026-09-26 (team request): a person wearing **Snap Spectacles (2024)** sees what the G1
 knows, in place in the room: the robot, its path, the LiDAR map, and semantic POIs / 3D boxes
-(M4 output). Guide and code: `ar_glasses/README.md`.
+(M4 output). Guides: `ar_glasses/README.md` (glasses, Windows / Ubuntu) and
+`g1_ws/src/g1_ar_bridge/README.md` (bridge); hand-out for the robot laptop:
+`ar_glasses/UBUNTU_BRIDGE_SETUP.txt`.
 
 **Base:** the MIT-licensed Lens of [spectacles-dimensional-os](https://github.com/V4C38/spectacles-dimensional-os),
 pinned at commit `ebf1d38`, Lens Studio **5.15.4** (the last Lens Studio line for Spectacles 2024).
 Its Lens connects over Wi-Fi to a bridge: `ws://<laptop IP>:8787` (port fixed in the Lens),
 protocol **v19** (the Lens rejects any other version), JSON lines + binary LiDAR / camera frames.
 The upstream clone lives in the git-ignored `ar_glasses/upstream/` (its Lens packages are Git LFS).
+**We use the Lens unchanged** (an optional text-only patch is in `ar_glasses/lens_patches/`); our
+side is the bridge, `g1_ar_bridge`, on the robot laptop. The upstream Dimensional OS robot stack
+is not used.
 
 ```text
 Lens Studio (Windows/macOS only) ──USB-C, once──► Spectacles Drafts (persists across laptop / OS)
-Spectacles ──Wi-Fi──► bridge:  mock_bridge.py (no robot)  →  upstream dimos-ar (ROBOT_IP=fake)
-                               →  g1_ar_bridge (ROS 2, our stack; next)
+Spectacles ──Wi-Fi──► g1_ar_bridge ar_bridge (robot laptop, ROS 2) ◄── TF, /cloud_map, /plan, markers
+                      ▲ map -> ar_tag_0 ◄── g1_ar_bridge tag_anchor ◄── robot camera sees the wall tag
+           (no robot: g1_ar_bridge.sim_main with a simulated G1, or ar_glasses/mock_bridge)
 ```
 
-- **Frames:** the protocol's AR world frame is metres, Y up, marker +X forward, quaternions
-  `[x, y, z, w]`. `g1_ar_bridge` will hold one `T_ar_map`, from the upstream AprilTag alignment
-  (tags on the G1 torso; their pose relative to `torso_link` measured and recorded like any other
-  glue frame, §10.1) and publish nothing into our TF tree except, optionally, `map -> ar_world`.
-  POIs are converted from `map` (never unlabelled coordinates, §10.1).
-- **Showing POIs:** the Lens's `draw_world_annotation` skill (labelled markers, polylines,
-  colours) needs no Lens change; 3D boxes are polylines. `mock_bridge.py --demo-pois` shows it.
-- **Safety:** the glasses are a viewer. Navigation goals from the glasses are ignored by default
-  in `g1_ar_bridge`; enabling them is M5 actuation under §19 / §25. Never run the upstream
-  Dimensional OS stack against the real G1 next to ours: it is a second robot stack with its own
-  map and it can walk the robot (§6).
-- **Network:** glasses and laptop on the same Wi-Fi (event Wi-Fi often isolates clients: use a
-  phone hotspot or a router). The laptop keeps Ethernet to the robot.
+- **Localization (decided 2026-09-26): one AprilTag on a wall, seen by both cameras.** AprilTag
+  36h11 **ID 0**, printed flat with its white paper margin, black square measured with a ruler
+  (`tag_black_size_m`). `tag_anchor` measures it with a robot camera while the robot **stands
+  still** 1-2 m in front of it: multi-frame PnP + TF `map <- camera` + a depth plane fit when
+  aligned depth exists -> static TF `map -> ar_tag_0`. The glasses measure the same tag through
+  the Lens's **AprilTag registration** (camera JPEGs + the glasses' pose in their own world;
+  multi-view refinement while the person steps sideways) -> `T_ar_tag`. The bridge commits
+  `T_ar_map = T_ar_tag · T_map_tag⁻¹`, levelled to yaw + translation (both worlds are
+  gravity-aligned); it refuses when the two "up" directions disagree by > 10° (a wrong camera
+  TF). The two measurements need not be simultaneous (the tag is static and the anchor lives in
+  `map`); if the glasses finish first the bridge waits for the anchor. Valid for one RTAB-Map map:
+  re-anchor after a new mapping session (a few seconds of standing in front of the tag).
+  Nothing is mounted on the robot. Robot camera: the head RealSense (URDF extrinsic; it looks
+  48° down, so the tag goes low on the wall or on the floor) or the chest OAK-D (topics and the
+  `torso_link -> <oak frame>` TF still to verify, §7). Image `frame_id` = the optical frame.
+  Manual Placement (marker dragged onto the robot + the robot's `map` pose) stays as a fallback.
+- **Frames** (ownership in §6): `map -> ar_tag_<id>` (static, `tag_anchor`), `map -> ar_world`
+  (static, published at each registration), `ar_world -> spectacles` (~2 Hz from the Lens's
+  `get_user_hmd_transform`; x forward / y left / z up), `/ar_glasses/hmd_pose` (PoseStamped in
+  `map`). The AR world is metres, Y up, marker +X forward, quaternions `[x, y, z, w]`
+  (`R_ALIGN`: ROS (x, y, z) -> AR (x, z, -y)). The registration is cleared when the last Lens
+  disconnects (a new Lens session has a new AR world).
+- **Showing POIs:** any node publishes `visualization_msgs/MarkerArray` on `/ar_glasses/markers`
+  in `map` (TEXT / SPHERE -> labelled marker, CUBE -> 3D box edges + `text`, LINE_STRIP /
+  LINE_LIST, DELETE / DELETEALL); the bridge draws them with the Lens's `draw_world_annotation`
+  skill (no Lens change). `ros2 run g1_ar_bridge publish_demo_pois` for a check.
+  `semantic_query` (M4) should publish its POIs there. Voice / typed commands from the glasses
+  are republished on `/ar_glasses/user_command` (String).
+- **Safety:** the glasses are a viewer. The bridge's handshake disables the Lens's navigation
+  marker and e-stop button, and it refuses `nav_goal`, `joystick_command` and `emergency_stop`
+  (the only e-stop is the robot remote). Enabling goals from the glasses would be M5 actuation
+  under §19 / §25. Never run the upstream Dimensional OS stack against the real G1 next to ours:
+  it is a second robot stack with its own map and it can walk the robot (§6).
+- **Network / clock:** glasses and laptop on the same Wi-Fi (event Wi-Fi often isolates clients:
+  use a phone hotspot or a router); the laptop keeps Ethernet to the robot; the container runs
+  with `--net=host` (`scripts/run_humble.sh`), so port 8787 is on the laptop's Wi-Fi. The laptop
+  must be NTP-synced to `.161` (§7 Clock) for the `spectacles` TF stamps; `tag_anchor` itself
+  only uses views while the camera's `map` pose is steady, so it does not depend on the camera
+  clock.
+- **OpenCV:** works with Ubuntu 22.04's 4.5.4 (old `cv2.aruco` API) up to 5.x. 4.5 drops a
+  tag's black square when its white margin is thin: handled (all candidates, largest square per
+  id); corners are refined on the tag edges, so both versions give the same accuracy.
 
-Status (2026-09-26): `ar_glasses/mock_bridge` (Python + `websockets`, Windows / Ubuntu / macOS)
-implements the v19 flows the Lens uses: handshake, clock ping, manual and mock-AprilTag
-registration, pose stream, simulated walking to goals with path and nav status, emergency stop,
-synthetic LiDAR (full / obstacles), camera-frame acks, agent replies, demo POIs + box with retry
-while the Lens is still in its wizard. Checked against upstream `PROTOCOL.md` and the Lens parser
-(`Protocol.ts`, `ArSkillHandlers.ts`); 10 protocol tests pass on websockets 10.4 / 12.0 / 17.1.
-**Not yet run with the real glasses.** Next: deploy from Windows (guide Part 1), then
-`g1_ar_bridge` on Ubuntu.
+Status (2026-09-26): the mock bridge (`ar_glasses/mock_bridge`) worked with the real glasses
+(connect, Manual Placement, demo POIs). `g1_ar_bridge` is implemented and tested offline: 32
+unit / protocol tests (rendered tag images, a scripted Lens over a real WebSocket, OpenCV 4.5.4
+and 5.0, websockets 10.4-17.1) and a ROS 2 test that runs `ros2 launch g1_ar_bridge
+ar_bridge.launch.py` with a fake robot camera (rendered tag + depth + TF) and a scripted Lens
+(anchor with depth, registration, `map -> ar_world`, `spectacles`, user commands). Simulated
+accuracy (17 cm tag, ideal cameras): yaw ≤ 0.4°, points ≤ ~1 cm. **Not yet run on the robot
+or with the real glasses in AprilTag mode.** Next: home test with `sim_main` and a printed tag,
+then on the robot (RealSense first), then POIs from `semantic_query`.

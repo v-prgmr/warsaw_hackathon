@@ -25,5 +25,7 @@ see **"Testing from the computer connected to the robot"** in [`g1_ws/README.md`
 ## AR glasses — [`ar_glasses/`](ar_glasses/README.md)
 
 Snap Spectacles (2024) showing the robot, its path, the LiDAR map and semantic POIs in the room.
-Windows setup (Lens Studio 5.15.4, USB deploy) and a mock bridge to test without the robot:
-[`ar_glasses/README.md`](ar_glasses/README.md).
+The glasses and the robot are aligned with one AprilTag on a wall, seen by a robot camera and by
+the glasses. Windows setup (Lens Studio 5.15.4, USB deploy), home test, and robot run:
+[`ar_glasses/README.md`](ar_glasses/README.md); the bridge is the ROS 2 package
+[`g1_ws/src/g1_ar_bridge`](g1_ws/src/g1_ar_bridge/README.md).

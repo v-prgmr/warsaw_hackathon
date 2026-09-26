@@ -3,30 +3,59 @@
 Goal: someone wearing Spectacles sees what the G1 knows, placed in the real room: the robot, its
 path, the LiDAR map, and **semantic POIs / 3D boxes** ("red bottle", "box on the table").
 
-We start from the open-source Lens of
-[spectacles-dimensional-os](https://github.com/V4C38/spectacles-dimensional-os) (MIT; Go2 tested,
-G1 "supported, not tested"). Its Lens talks to a bridge over a WebSocket (protocol v19,
-`dimos-ar/PROTOCOL.md` upstream) and aligns the glasses with the robot using AprilTags on the robot.
+The glasses run the open-source **Dimensional OS** Lens of
+[spectacles-dimensional-os](https://github.com/V4C38/spectacles-dimensional-os) (MIT), unchanged.
+The Lens is only a viewer: it connects over Wi-Fi to a **bridge** (`ws://<laptop IP>:8787`,
+protocol v19) that tells it what to draw. Our bridge is the ROS 2 package
+**`g1_ws/src/g1_ar_bridge`**, running on the Ubuntu laptop that is connected to the G1.
 
 ```text
-Windows + Lens Studio 5.15.4 ──USB-C (only to install the Lens)──► Spectacles (Lens stays in Drafts)
+Windows + Lens Studio 5.15.4 ──USB-C, once──► Spectacles (the Lens stays in Drafts)
 
-Spectacles ──Wi-Fi, ws://<laptop IP>:8787──► bridge on the laptop
-                                             1. mock_bridge.py   (this folder; Windows or Ubuntu, no robot)
-                                             2. upstream dimos-ar bridge (Ubuntu/macOS, ROBOT_IP=fake)
-                                             3. g1_ar_bridge (ROS 2, our stack: RTAB-Map map, TF, POIs) — next
+Spectacles ──Wi-Fi, ws://<laptop IP>:8787──► a bridge on a laptop:
+   g1_ar_bridge ar_bridge   robot laptop, ROS 2: real robot, map, POIs      (Part 3)
+   g1_ar_bridge sim_main    any laptop, no ROS: simulated G1 + your real wall tag (Part 2)
+   mock_bridge.py           any laptop, only `websockets`: protocol smoke test  (Part 1)
 ```
 
 Pinned upstream commit: **`ebf1d38`** (2026-09-26). Lens Studio version of that project:
 **5.15.4** (5.15.x is the last Lens Studio line for Spectacles 2024).
 
+## How the glasses find the robot: one AprilTag on a wall, two cameras
+
+The glasses and the robot each have their own world. They are linked by **one printed AprilTag
+on a wall** that both see:
+
+```text
+robot camera (head RealSense or chest OAK-D) sees the tag  ->  tag pose in the robot's map
+Spectacles camera sees the same tag                         ->  tag pose in the glasses' world
+                                                            =>  glasses world <-> robot map
+```
+
+The robot measures the tag once, while it stands still in front of it (`tag_anchor`, a few
+seconds). The glasses measure it when you choose **AprilTag** in the Lens's registration. The
+order does not matter. Afterwards, everything in the robot's map (the robot, the LiDAR, POIs,
+boxes) is drawn in the right place, and the glasses' position is published on the robot's TF
+tree (`map -> ar_world -> spectacles`). Nothing needs to be mounted on the robot. The Lens needs
+no change: its AprilTag mode sends camera frames and the glasses' pose to the bridge, and the
+bridge does the math. Details: `g1_ws/src/g1_ar_bridge/README.md`.
+
+**The tag:** AprilTag family **36h11, ID 0**. Print it at least 15 cm wide (A4 is ideal).
+Keep the white paper around it (do not trim to the black square). Glue it flat on card, tape
+it to the wall, and **measure the black square's edge** with a ruler; that number
+(`tag_black_size_m`, e.g. `0.16`) goes into the commands below. With the head RealSense (it
+looks 48° down), put the tag low on the wall or on the floor ~1 m in front of the robot. With
+the chest OAK-D, put it at chest height.
+
 ## What is where
 
 | Path | What |
 |---|---|
-| `mock_bridge/mock_bridge.py` | stand-in bridge: handshake, registration (manual, or a mock AprilTag flow), a simulated G1 that walks to goals, synthetic LiDAR room, demo POIs + a 3D box (`--demo-pois`). Python 3.9+ and `websockets` only |
+| `../g1_ws/src/g1_ar_bridge/` | **the bridge** (ROS 2 package + `sim_main` without ROS) and its tests |
+| `UBUNTU_BRIDGE_SETUP.txt` | hand-out for the robot laptop: network, container, launch, checks |
+| `lens_patches/g1-wall-tag-texts.patch` | optional: Lens texts for our setup ("robot laptop" instead of "Mac", wall tag) |
+| `mock_bridge/mock_bridge.py` | protocol stand-in: handshake, manual + mock-AprilTag registration, simulated walking, synthetic LiDAR, demo POIs (`--demo-pois`). Only `websockets` |
 | `mock_bridge/test_mock_bridge.py` | protocol tests (a WebSocket client playing the Lens) |
-| `UBUNTU_BRIDGE_SETUP.txt` | hand-out for the Ubuntu laptop connected to the G1: network, mock test, `g1_ar_bridge` plan, WebSocket vs FastAPI, AprilTag |
 | `upstream/` | your clone of spectacles-dimensional-os (git-ignored; see step 3) |
 
 ---
@@ -93,13 +122,20 @@ ls -la ar_glasses/upstream/lens-studio/Packages/*.lspkg
    can only be sent from Lens Studio, not published. Accept the camera / internet permission
    prompts on the glasses.
 
+Optional, any time later: our texts in the Lens (the wizard says "Mac" and "tag on the robot"
+otherwise). In Git Bash, then repeat step 4.5:
+
+```bash
+git -C ar_glasses/upstream apply ../lens_patches/g1-wall-tag-texts.patch
+```
+
 ### 5. Run the mock bridge
 
 In **PowerShell** (or Git Bash):
 
 ```powershell
 cd $HOME\Documents\warsaw_hackathon\ar_glasses\mock_bridge
-py -m pip install -r requirements.txt
+py -m pip install -r requirements.txt       # once; "No module named 'websockets'" = skipped
 py mock_bridge.py --demo-pois
 ```
 
@@ -118,22 +154,72 @@ Optional self-check (same laptop, second PowerShell):
 
 ### 6. Use it on the glasses
 
-1. On the glasses open **Drafts → Dimensional OS**.
-2. The **Registration Wizard** asks for the **Bridge IP**: type the IP the mock printed (no port;
-   the Lens always uses `:8787`). The mock prints `Lens connected from ...`. The Lens remembers
-   this IP; when the laptop's IP changes (other network, other OS), enter the new one.
-3. Register the robot position:
-   - **Manual Placement** (recommended with the mock): drag the robot marker onto a spot on the
-     floor, then commit. A G1-sized box appears there.
-   - **AprilTag** also works with the mock: there is no real tag detection; after ~12 camera
-     frames it places the robot 1.5 m in front of you, facing you.
-4. **Palm up (left hand)** opens the wrist menu: the **LiDAR** button cycles off → obstacles →
-   full (a synthetic 6 × 5 m room with a table). Emergency stop and re-registration are there too.
-5. **Navigation:** drag the navigation marker somewhere: the simulated robot walks there
-   (0.4 m/s) along a yellow path, then reports success. Only the simulation moves.
-6. With `--demo-pois`: two labelled markers (*red bottle (0.87)*, *box on the table (0.74)*) and a
-   green 3D box appear next to the robot. This is exactly how our semantic POIs will be shown:
-   the Lens's `draw_world_annotation` skill, no Lens change needed.
+**Drafts → Dimensional OS** opens a 3-step wizard:
+
+1. **"Start Robot & Bridge"** (the upstream text says "Run start.sh on your Mac": ignore it):
+   the bridge just has to be running on some laptop. Press **Next**.
+2. **"Connect"**: type the IP the bridge printed (no port; the Lens always uses `:8787`). The
+   bridge prints `Lens connected from ...`. The Lens remembers the IP; enter the new one when
+   the laptop changes network or OS.
+3. **"Registration"**: the footer button switches between **AprilTag** and **Manual Placement**.
+   - **Manual Placement**: drag the robot marker onto a spot on the floor, then **Complete**.
+   - **AprilTag** (the real method, Parts 2-3): look at the wall tag from 1-2 m and step
+     sideways slowly; the bar fills and the wizard finishes by itself. With the mock bridge
+     there is no real detection: it places the robot 1.5 m in front of you after ~12 frames.
+
+Then: **palm up (left hand)** opens the wrist menu. The **LiDAR** button cycles off → obstacles →
+full. Re-registration is there too. With the mock and `--demo-pois`: two labelled markers and a
+green 3D box appear next to the robot. With the mock only, dragging the navigation marker walks
+the simulated robot; our real bridge disables it (safety).
+
+---
+
+## Part 2 — Home test of the wall tag, no robot (Windows / Ubuntu / macOS)
+
+This uses the real bridge code with a **simulated G1** and **your printed tag**, so the tag,
+the glasses' camera frames and the math are tested before robot time. Tape the tag to a wall,
+then in PowerShell:
+
+```powershell
+cd $HOME\Documents\warsaw_hackathon\g1_ws\src\g1_ar_bridge
+py -m pip install -r requirements-sim.txt         # once: websockets, numpy, opencv-python
+py -m g1_ar_bridge.sim_main --tag-size 0.16       # YOUR black-square size in metres
+```
+
+(Ubuntu: `python3 -m pip install --user -r requirements-sim.txt`, then
+`python3 -m g1_ar_bridge.sim_main --tag-size 0.16`.)
+
+On the glasses: Dimensional OS → the printed IP → Registration → **AprilTag** → look at the tag
+from 1-2 m and step sideways. Expected: *"Tag 0 seen N/6"* while collecting, then the wizard
+finishes. The virtual G1 stands **1.5 m in front of the tag, facing it** (`--tag-distance`). The
+synthetic room's front wall (LiDAR *full* in the wrist menu) lies on your real wall, and two POIs
+and a box sit on a virtual table to the robot's right. If the box floats off the wall, check
+`--tag-size` first. The terminal also prints where the glasses are relative to the robot.
+
+## Part 3 — With the robot (Ubuntu laptop on the robot's Ethernet)
+
+The Lens stays on the glasses; only the bridge changes. Summary (full hand-out:
+`UBUNTU_BRIDGE_SETUP.txt`):
+
+```bash
+scripts/run_humble.sh                                   # robot-connected container (--net=host)
+colcon build --packages-select g1_ar_bridge && source install/setup.bash   # in /ws/g1_ws
+ros2 launch g1_sensors tf_chain.launch.py               # /tf (AGENTS.md §10.1)
+ros2 launch g1_mapping mapping.launch.py static_tf:=false
+# + the robot camera driver (head RealSense: realsense-ros with aligned depth)
+ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=0.16
+```
+
+1. Stand the robot **still, 1-2 m in front of the tag**, facing it, until the log says
+   `anchored map -> ar_tag_0` (`ros2 topic echo /ar_glasses/anchor_status`).
+2. Glasses: Dimensional OS → the laptop's **Wi-Fi** IP → Registration → **AprilTag** → look at
+   the tag, step sideways. The robot box appears on the real robot.
+3. POIs: anything published as `visualization_msgs/MarkerArray` on `/ar_glasses/markers` (in
+   `map`) shows up; `ros2 run g1_ar_bridge publish_demo_pois` for a first check.
+
+**Never** run the upstream Dimensional OS stack (`launcher/scripts/start.sh`) against the real
+G1 next to ours: it is a second robot stack with its own map and it can walk the robot
+(AGENTS.md §6, §25).
 
 ### Troubleshooting
 
@@ -142,35 +228,14 @@ Optional self-check (same laptop, second PowerShell):
 | Lens Studio does not see the glasses | native USB-C port, C-to-C cable, glasses on; "Enable Wired Connectivity" on in the app; restart Lens Studio; wireless fallback: same Wi-Fi + logged in with the same Snapchat account as the app |
 | "Lens Studio version not compatible" / push fails | use exactly 5.15.4 and update the glasses' Snap OS in the app |
 | Project opens with missing packages / errors | Git LFS was not active: `git -C ar_glasses/upstream lfs pull`, reopen |
-| Lens cannot connect to the bridge | glasses and laptop on the same Wi-Fi; the laptop's IP (not 127.0.0.1); firewall rule above; event Wi-Fi often isolates devices → use a phone hotspot or your own router for both |
-| Mock says `connected` but nothing appears | finish the registration (commit); the robot, LiDAR and POIs appear only after it |
+| `No module named 'websockets'` | `py -m pip install -r requirements.txt` (use `py -m pip`, not `pip`: same Python as `py`) |
+| Lens cannot connect ("WebSocket connection timeout") | bridge running; glasses and laptop on the same Wi-Fi; the laptop's Wi-Fi IP (not 127.0.0.1); firewall rule above / `sudo ufw allow 8787/tcp`; event Wi-Fi often isolates devices → phone hotspot or your own router for both |
+| Bridge says `connected` but nothing appears | finish the registration; the robot, LiDAR and POIs appear only after it |
+| AprilTag: "Tag not visible" | 1-2 m away, tag well lit, not trimmed, ID 0 of family 36h11; the glasses' camera must see it |
+| AprilTag: stuck on "Waiting for the robot camera to see tag 0" | the robot has not anchored the tag yet: stand it still facing the tag; check `/ar_glasses/anchor_status` and TF `map <- <camera optical frame>` |
+| AprilTag: "disagree on 'up' by N deg" | the robot camera's TF is wrong (mount / frame): check it in RViz |
+| Robot box / POIs offset from the real ones | wrong `tag_black_size_m`, or the tag moved after anchoring; re-anchor and re-register |
 | Glasses get hot | LiDAR on *full* is heavy; use *obstacles* or off |
-
----
-
-## Part 2 — Ubuntu: same glasses, same Lens
-
-The Lens stays on the glasses. On Ubuntu only the bridge changes:
-
-```bash
-cd ~/warsaw_hackathon && git checkout claude/ar-glasses
-python3 -m pip install --user websockets
-python3 ar_glasses/mock_bridge/mock_bridge.py --demo-pois   # type this laptop's IP into the Lens
-```
-
-Then, in order:
-
-1. **Upstream bridge without a robot** (Dimensional OS, Ubuntu is its main platform): in
-   `ar_glasses/upstream`, `./launcher/scripts/setup.sh --stack g1`, then
-   `ROBOT_IP=fake ./launcher/scripts/start.sh` (Python 3.12; the author tested on macOS only).
-   **Never** point it at the real G1 while our stack runs: it is a second robot stack with its
-   own map and it can walk the robot (AGENTS.md §6, §25).
-2. **`g1_ar_bridge`** (next step, ROS 2): the same protocol, fed by our stack. Robot pose from
-   `map -> torso_link` (RTAB-Map + `g1_sensors`), LiDAR from `/cloud_map`, path from Nav2, POIs
-   and 3D boxes from `semantic_query` as `draw_world_annotation`. It reuses upstream's AprilTag
-   alignment code (MIT). Navigation goals from the glasses stay **off** by default (§19, §25).
-3. Lens changes (new message types, our own UI) are done in Lens Studio on Windows and pushed
-   again; the bridge side stays on Ubuntu.
 
 ## Conventions (protocol v19)
 
