@@ -1,94 +1,132 @@
 AR GLASSES BRIDGE - SETUP FOR THE UBUNTU LAPTOP CONNECTED TO THE G1
 ====================================================================
-(repo v-prgmr/warsaw_hackathon, branch claude/ar-glasses; details in ar_glasses/README.md
- and AGENTS.md section 27)
+(repo v-prgmr/warsaw_hackathon, branch claude/ar-glasses. Details: g1_ws/src/g1_ar_bridge/README.md,
+ ar_glasses/README.md, AGENTS.md section 27)
 
 WHAT THIS IS
 ------------
-The Snap Spectacles already have our Lens installed (it was pushed from Lens Studio on Windows;
-it stays on the glasses). The Lens is a WebSocket CLIENT. It connects over Wi-Fi to a SERVER
-("the bridge") at:
+The Snap Spectacles already have the Dimensional OS Lens installed (pushed once from Lens Studio on
+Windows; it stays on the glasses). The Lens is a WebSocket CLIENT. It connects over Wi-Fi to a
+SERVER, "the bridge", at
 
-    ws://<THIS LAPTOP'S Wi-Fi IP>:8787        (port 8787 is fixed in the Lens, path "/")
+    ws://<THIS LAPTOP'S Wi-Fi IP>:8787        (port fixed in the Lens; you only type the IP)
 
-The bridge runs on THIS Ubuntu laptop, because this laptop already sees our ROS 2 topics from
-the G1 over Ethernet. Nothing is installed on the robot.
+The bridge is our ROS 2 package g1_ar_bridge. It runs on THIS laptop, in our usual ROS 2 Humble
+container, next to our stack, because this laptop sees the G1's topics over Ethernet. Nothing is
+installed on the robot. It is read-only: it never sends commands to the robot.
 
-    Spectacles --Wi-Fi--> this laptop: bridge on :8787 --ROS 2--> our stack --Ethernet--> G1
+    Spectacles --Wi-Fi--> this laptop: ar_bridge (:8787)  <-- TF, /cloud_map, /plan, POI markers
+                                       tag_anchor          <-- robot camera sees the wall AprilTag
+                                       our stack (g1_sensors, g1_mapping) --Ethernet--> G1
 
-Windows is only needed to change the Lens itself. Not needed to run anything here.
-
-
-NETWORK REQUIREMENTS
---------------------
-- Keep the Ethernet link to the robot as it is (192.168.123.x, our usual setup).
-- Put the laptop's Wi-Fi on the SAME network as the glasses. Event Wi-Fi often blocks devices
-  from talking to each other -> use a phone hotspot or our own router for laptop + glasses.
-- Find the Wi-Fi IP:            ip -4 addr show   (the wlan/wlp... interface)
-- If a firewall is on:          sudo ufw allow 8787/tcp
-- Test from a phone on the same Wi-Fi: open http://<laptop IP>:8787 in the browser.
-  A short "Failed to open a WebSocket connection" / "426" page = reachable. Spinning = blocked.
+No FastAPI is needed: ar_bridge is one ROS 2 node with a plain WebSocket server ("websockets"
+library), which is all the Lens speaks.
 
 
-STEP 1 - TEST THE CONNECTION WITH THE MOCK BRIDGE (no robot, no ROS needed)
----------------------------------------------------------------------------
-    cd ~/warsaw_hackathon
-    git fetch origin && git checkout claude/ar-glasses && git pull
-    python3 -m pip install --user -r ar_glasses/mock_bridge/requirements.txt
-    python3 ar_glasses/mock_bridge/mock_bridge.py --demo-pois
+HOW THE GLASSES ARE LOCATED: ONE APRILTAG ON A WALL, SEEN BY BOTH CAMERAS
+-------------------------------------------------------------------------
+  - tag_anchor: the robot camera sees the tag while the robot STANDS STILL 1-2 m in front of it
+    -> publishes the static TF  map -> ar_tag_0.
+  - The glasses see the same tag in "AprilTag" registration (they send camera frames + their pose)
+    -> ar_bridge computes glasses-world <-> map and publishes map -> ar_world -> spectacles.
+  - Order does not matter. If the glasses finish first, the Lens shows "Waiting for the robot
+    camera to see tag 0" until the anchor exists.
 
-It prints the IP to type into the Lens. On the glasses: Drafts -> Dimensional OS -> enter the IP
--> Manual Placement -> Complete. Success = the terminal prints "[mock] Lens connected from ...",
-a robot box, a room point cloud and two labelled demo POIs appear. Stop with Ctrl+C.
-Optional check:  cd ar_glasses/mock_bridge && python3 -m pytest   -> 10 passed
-
-
-STEP 2 - THE REAL BRIDGE: g1_ar_bridge (NOT BUILT YET, being written on claude/ar-glasses)
-------------------------------------------------------------------------------------------
-Same WebSocket server on :8787, but fed by our ROS 2 topics instead of simulated data.
-It runs inside our usual ROS 2 Humble environment (Docker image / scripts/run_humble.sh), on the
-robot's DDS domain, next to g1_sensors + g1_mapping. It only READS topics:
-
-    robot pose      TF  map -> torso_link / robot_center   (RTAB-Map + g1_sensors)
-    LiDAR map       /cloud_map                             (g1_mapping)
-    Nav2 path       /plan                                  (when Nav2 runs)
-    POIs / boxes    semantic_query output (frame_id = map) -> drawn in the glasses as
-                    labelled markers and 3D boxes (Lens "draw_world_annotation" skill)
-
-Safety (AGENTS.md sections 19 and 25): navigation goals and commands sent from the glasses are
-IGNORED by default. The bridge never publishes /cmd_vel. Do NOT run the upstream Dimensional OS
-stack (launcher/start.sh) against the real G1: it is a second robot stack and can walk the robot.
-
-Expected run command once it exists (will be confirmed in ar_glasses/README.md):
-    ros2 launch g1_ar_bridge ar_bridge.launch.py
+THE TAG: AprilTag family 36h11, ID 0, printed >= 15 cm (A4 ideal), white paper margin kept, flat
+on card, taped to the wall. MEASURE THE BLACK SQUARE (edge, metres) -> tag_black_size_m below.
+Head RealSense (looks 48 deg down): tag low on the wall or on the floor ~1 m in front of the robot.
+Chest OAK-D: tag at chest height (its topics and mount TF must be verified first).
 
 
-WEBSOCKETS vs FASTAPI
----------------------
-Either works: the Lens only needs a WebSocket server on port 8787, path "/", that speaks the
-Lens protocol v19 (the Lens rejects any other version):
-  - JSON text messages, each ending with "\n" (hello, runtime_snapshot, pose, path, ...)
-  - binary LiDAR frames: byte 0x01, float32 timestamp, then float16 x,y,z per point
-  - binary camera frames FROM the Lens: "ARF1" + uint32 header length + JSON header + JPEG
-  - frame: metres, Y up, robot +X forward, quaternions [x, y, z, w]
-The reference implementation is ar_glasses/mock_bridge/mock_bridge.py.
-Plan: g1_ar_bridge = rclpy node + the "websockets" library (one process, no uvicorn, built with
-colcon like our other packages). FastAPI/uvicorn only if we later also want HTTP pages or a REST
-API (e.g. a POI list in the browser); it would then run in the same ROS 2 environment.
+1. NETWORK (once per session)
+-----------------------------
+- Ethernet to the robot as usual (192.168.123.x). See g1_ws/README.md section 1.
+- Laptop Wi-Fi on the SAME network as the glasses. Event Wi-Fi often blocks devices from talking
+  to each other -> phone hotspot or our own router for laptop + glasses.
+- Wi-Fi IP of this laptop:      ip -4 addr show     (the wl... interface)
+- Firewall, if on:              sudo ufw allow 8787/tcp
+- Clock: sync this laptop to the robot (g1_ws/README.md section 5, AGENTS.md section 7) before
+  live runs; the glasses' TF is stamped with this laptop's clock.
 
 
-APRILTAG (aligning the glasses with the robot)
-----------------------------------------------
-We have ONE tag: AprilTag 36h11, ID 0. That matches the upstream G1 default exactly:
-tag ID 0 on the G1 CHEST panel, facing forward, 70 mm printed (56 mm black square),
-centre ~ (x 0.072, y 0.0, z 0.178) m from the pelvis. One tag is enough (full 6-DoF pose).
-  - Print it at 70 mm outer size (or measure the black square and tell us), glue it flat to card.
-  - Mount it flat on the chest without covering the OAK-D, LiDAR, cameras or vents (sec. 25.2).
-    If the OAK-D takes that spot, put it elsewhere and MEASURE its position vs torso_link.
-  - Until g1_ar_bridge supports it: use "Manual Placement" in the Lens (no tag needed).
+2. CONTAINER + BUILD (once, and after every git pull)
+-----------------------------------------------------
+    cd ~/warsaw_hackathon && git fetch origin && git checkout claude/ar-glasses && git pull
+    ROBOT_IFACE=<your ethernet NIC> scripts/run_humble.sh      # rebuilds the image (adds websockets)
+    # inside the container:
+    cd /ws/g1_ws && colcon build && source install/setup.bash
+    # (if another package fails to build: colcon build --packages-select g1_ar_bridge g1_sensors g1_mapping)
+
+The container runs with --net=host, so port 8787 is reachable on the laptop's Wi-Fi.
+
+
+3. RUN (each in its own terminal inside the container, `source /ws/g1_ws/install/setup.bash`)
+------------------------------------------------------------------------------------------------
+    ros2 launch g1_sensors tf_chain.launch.py                 # our /tf (robot -> cameras)
+    ros2 launch g1_mapping mapping.launch.py static_tf:=false # map, /cloud_map, map -> odom
+    # robot camera: head RealSense on the Orin with aligned depth (start_realsense.md), topics
+    #   /camera/color/image_raw  /camera/color/camera_info  /camera/aligned_depth_to_color/image_raw
+    ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=0.16     # YOUR measurement
+
+    # chest OAK-D instead (only after its topics + torso_link -> oak TF are verified):
+    ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=0.16 \
+        image_topic:=<rgb> camera_info_topic:=<rgb camera_info> depth_topic:=<depth aligned to rgb>
+
+The image's frame_id must be the camera's OPTICAL frame (e.g. camera_color_optical_frame).
+
+
+4. DO IT
+--------
+a) Stand the robot still, 1-2 m in front of the tag, facing it. Watch:
+       ros2 topic echo /ar_glasses/anchor_status
+   until "state": "anchored" (log: "anchored map -> ar_tag_0 ... 'depth': 'used'").
+b) Glasses: Drafts -> Dimensional OS -> Next -> type THIS laptop's Wi-Fi IP -> Registration ->
+   press "AprilTag" -> look at the wall tag from 1-2 m and step sideways slowly.
+   The bar fills ("Tag 0 seen N/6"), the wizard finishes, the robot box sits on the real robot.
+c) Check in RViz (fixed frame map): TF shows ar_tag_0, ar_world, spectacles.
+       ros2 run tf2_ros tf2_echo robot_center spectacles     # robot -> glasses, live
+       ros2 topic echo /ar_glasses/status
+d) POIs: anything published as visualization_msgs/MarkerArray on /ar_glasses/markers (frame map)
+   appears in the glasses (TEXT = label, CUBE = 3D box). Quick check:
+       ros2 run g1_ar_bridge publish_demo_pois
+   Voice/typed commands from the glasses arrive on /ar_glasses/user_command (std_msgs/String).
+
+Fallback: in the Lens press "Manual Placement", drag the marker onto the real robot, Complete.
+
+
+5. TEST WITHOUT THE ROBOT (optional)
+------------------------------------
+No ROS needed, simulated G1 + a real tag on your wall:
+    cd ~/warsaw_hackathon/g1_ws/src/g1_ar_bridge
+    python3 -m pip install --user -r requirements-sim.txt
+    python3 -m g1_ar_bridge.sim_main --tag-size 0.16
+Glasses: same steps; the virtual G1 appears 1.5 m in front of the tag, facing it.
+Tests:  python3 -m pytest g1_ws/src/g1_ar_bridge/test      (inside the container also runs the
+        ROS launch test)
+
+
+SAFETY (AGENTS.md sections 19 and 25)
+-------------------------------------
+- The bridge never moves the robot: the Lens's navigation marker and e-stop button are disabled,
+  goals / joystick / e-stop messages are refused. The only e-stop is the robot's remote.
+- Do NOT run the upstream Dimensional OS stack (launcher/scripts/start.sh) against the real G1:
+  it is a second robot stack with its own map and it can walk the robot.
+
+
+TROUBLESHOOTING
+---------------
+- Lens "WebSocket connection timeout": wrong IP (use the Wi-Fi IP), different Wi-Fi, firewall,
+  or the Wi-Fi isolates clients (use a hotspot). From a phone on the same Wi-Fi open
+  http://<laptop IP>:8787 - a short error page = reachable, spinning = blocked.
+- "Waiting for the robot camera to see tag 0": the anchor is missing. Robot standing still?
+  Camera topics right? TF map <- <optical frame> available (tf_chain + g1_mapping running)?
+- "Robot and glasses disagree on 'up'": the robot camera's TF is wrong (mount/frame); check RViz.
+- Robot box / POIs offset: wrong tag_black_size_m, or the tag moved after anchoring
+  (re-anchor: stand the robot in front of it again; then re-register on the glasses).
+- After a NEW mapping session (new map), re-anchor: map frames differ between sessions.
 
 
 END OF A SESSION
 ----------------
-Ctrl+C the bridge. For the ROS stack follow AGENTS.md section 19 (scripts/stop_ros.sh inside the
-container; never kill -9 a ros2 launch).
+Ctrl-C each launch, or `bash /ws/scripts/stop_ros.sh` inside the container (AGENTS.md section 19;
+never kill -9 a ros2 launch).

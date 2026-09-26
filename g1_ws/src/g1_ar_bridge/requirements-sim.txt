@@ -1,0 +1,5 @@
+# The bridge without ROS (python -m g1_ar_bridge.sim_main), e.g. on Windows next to Lens Studio.
+websockets>=10
+numpy
+opencv-python>=4.5
+pytest>=7  # only for the tests
