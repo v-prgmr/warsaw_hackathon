@@ -99,3 +99,8 @@ rtabmap_parameters:
   Mem/NotLinkedNodesKept: "false"
   Mem/STMSize: "10"                        # lidar3d uses 30; see ProximityPathMaxNeighbors
   Reg/Strategy: "1"
+  # ICP odometry roll/pitch drifts slowly from gravity (4-6 deg on the 2026-09-26 frontier run);
+  # the IMU gravity links pull the graph back. Default 0.3 left the floor tilted 1.36 deg on
+  # g1_rtabmap_dry_20260926_202136.db, 0.1 gives 0.91 deg. 0.03 over-constrains (floor inliers
+  # 80 % -> 50 %): the pelvis IMU jitters ~1.5 deg per node through the waist joints.
+  Optimizer/GravitySigma: "0.1"
