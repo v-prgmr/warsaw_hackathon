@@ -107,6 +107,8 @@ class ArBridgeServer:
         if self.session is not None:
             out["session"] = self.session["mode"]
             out["tag_views"] = self.session.get("views", 0)
+            if self.session.get("diag"):
+                out["tag_diagnosis"] = self.session["diag"]
         out.update(self.reg_info)
         return out
 
@@ -299,16 +301,26 @@ class ArBridgeServer:
                                     self.cfg.tag_black_size_m,
                                     max_reproj_px=self.cfg.max_view_reproj_px),
                                 "estimate": None, "solution": None}
+                anchor = self.world.anchor(self.cfg.tag_id)
+                self.log(f"[ar_bridge] AprilTag registration started (tag {self.cfg.tag_id}, "
+                         f"{self.cfg.tag_black_size_m} m); robot anchor "
+                         f"{'present' if anchor is not None else 'NOT visible yet'}")
                 await self.broadcast(P.registration_status(
                     "april_tag", self.tag_prompt(), mode, tag_visible=False, progress=0))
             else:
-                await self.broadcast(P.registration_status(
-                    "failed", f"Unknown registration mode {mode!r}"))
+                await self.fail_registration(f"Unknown registration mode {mode!r}")
         elif command == "stop":
+            if self.session is not None:
+                self.log(f"[ar_bridge] registration stopped by the glasses "
+                         f"({self.session['mode']}, e.g. Skip/Back)")
             self.session = None
             await self.broadcast(P.registration_status("idle", "Registration stopped"))
         elif command == "commit":
             await self.commit_manual()
+
+    async def fail_registration(self, why, mode=None):
+        self.log(f"[ar_bridge] registration failed: {why}")
+        await self.broadcast(P.registration_status("failed", why, mode))
 
     def tag_prompt(self):
         return (f"Look at AprilTag {self.cfg.tag_id} on the wall from 1-2 m and move "
@@ -329,9 +341,8 @@ class ArBridgeServer:
             return
         T_map_robot = self.world.robot_pose()
         if T_map_robot is None:
-            await self.broadcast(P.registration_status(
-                "failed", "No robot pose in map (TF map -> robot). Is g1_mapping running?",
-                "manual_pose"))
+            await self.fail_registration(
+                "No robot pose in map (TF map -> robot). Is g1_mapping running?", "manual_pose")
             self.session = None
             return
         T_ar_base, _ = ar_marker_to_T(*s["candidate"])
@@ -371,6 +382,8 @@ class ArBridgeServer:
         # the Lens keeps one frame in flight until it is acked: ack every frame, even dropped
         await self.send(ws, P.camera_frame_ack(header.get("seq", 0)))
         s = self.session
+        if s is not None and s["mode"] == "april_tag":
+            s["received"] = s.get("received", 0) + 1
         if s is None or s["mode"] != "april_tag" or self.frame_busy:
             return
         cam = self.camera.get(id(ws))
@@ -426,12 +439,13 @@ class ArBridgeServer:
                  and (est.baseline_m >= cfg.min_baseline_m or est.n_views >= 2 * cfg.min_views))
         confidence = 0.0 if est is None else max(0.0, min(1.0, 1.0 - est.rms_px / (
             2 * cfg.max_rms_px))) * min(1.0, est.n_views / float(cfg.min_views))
+        self.log_tag_diagnosis(s, result, est, anchor, sol, progress)
         if ready and sol is not None:
             if sol.tilt_deg > cfg.max_tilt_deg:
                 self.session = None
-                await self.broadcast(P.registration_status(
-                    "failed", f"Robot and glasses disagree on 'up' by {sol.tilt_deg:.0f} deg: "
-                    "check the robot camera's TF", "april_tag"))
+                await self.fail_registration(
+                    f"Robot and glasses disagree on 'up' by {sol.tilt_deg:.0f} deg: "
+                    "check the robot camera's TF", "april_tag")
                 return
             info = {"method": "april_tag", "tag_id": cfg.tag_id, "views": est.n_views,
                     "rms_px": round(est.rms_px, 2), "baseline_m": round(est.baseline_m, 2),
@@ -451,6 +465,51 @@ class ArBridgeServer:
             n = 0 if est is None else est.n_views
             message = f"Tag {cfg.tag_id} seen {n}/{cfg.min_views}: keep moving sideways"
         await self.send_tag_status(s, message, progress, confidence)
+
+    def tag_blocker(self, est, anchor, sol):
+        """What the AprilTag registration is waiting for (None = ready to commit)."""
+        cfg = self.cfg
+        if est is None:
+            return "no usable glasses view of the tag yet"
+        if est.n_views < cfg.min_views:
+            return f"consistent views {est.n_views}/{cfg.min_views}"
+        if est.rms_px > cfg.max_rms_px:
+            return f"multi-view fit {est.rms_px:.1f} px > max_rms_px {cfg.max_rms_px}"
+        if est.baseline_m < cfg.min_baseline_m and est.n_views < 2 * cfg.min_views:
+            return (f"sideways movement {est.baseline_m:.2f} m < {cfg.min_baseline_m} m "
+                    f"(or {2 * cfg.min_views} consistent views)")
+        if anchor is None:
+            return f"robot anchor: no TF map -> ar_tag_{cfg.tag_id} visible to the bridge"
+        if sol is not None and sol.tilt_deg > cfg.max_tilt_deg:
+            return f"'up' disagrees by {sol.tilt_deg:.1f} deg"
+        return None
+
+    def log_tag_diagnosis(self, s, result, est, anchor, sol, progress, period_s=2.0):
+        """One terminal line every ``period_s`` (or when the blocker changes)."""
+        blocker = self.tag_blocker(est, anchor, sol)
+        s["diag"] = {"received": s.get("received", 0), "processed": s.get("frames", 0),
+                     "last_frame": result.get("reason"), "waiting_for": blocker,
+                     "progress": int(progress)}
+        if est is not None:
+            s["diag"].update(views_used=est.n_views, views_total=est.n_total,
+                             rms_px=round(est.rms_px, 2), baseline_m=round(est.baseline_m, 3),
+                             pos_spread_m=round(est.pos_spread_m, 3),
+                             rot_spread_deg=round(est.rot_spread_deg, 1))
+        if sol is not None:
+            s["diag"].update(tilt_deg=round(sol.tilt_deg, 1), yaw_deg=round(sol.yaw_deg, 1))
+        now = time.monotonic()
+        if blocker == s.get("diag_blocker") and now - s.get("diag_logged", 0.0) < period_s:
+            return
+        s["diag_blocker"], s["diag_logged"] = blocker, now
+        d = s["diag"]
+        views = (f"views {d['views_used']}/{d['views_total']} used, rms {d['rms_px']} px, "
+                 f"sideways {d['baseline_m']} m, spread {d['pos_spread_m']} m / "
+                 f"{d['rot_spread_deg']} deg" if est is not None else "no views")
+        tilt = f", tilt {d['tilt_deg']} deg" if sol is not None else ""
+        self.log(f"[ar_bridge] tag: frames {d['received']} received / {d['processed']} "
+                 f"processed, last: {d['last_frame']}; {views}; anchor "
+                 f"{'yes' if anchor is not None else 'NO'}{tilt}; progress {d['progress']}%; "
+                 f"waiting for: {blocker or 'nothing (committing)'}")
 
     async def send_tag_status(self, s, message, progress, confidence):
         extra = {"tag_visible": bool(s.get("visible")), "progress": int(progress),
@@ -478,8 +537,13 @@ class ArBridgeServer:
                 why = f"The robot camera has not measured tag {self.cfg.tag_id} (no TF)"
             else:
                 why = "Not enough good views of the tag"
-            await self.broadcast(P.registration_status("failed", why, "april_tag"))
+            await self.fail_registration(why, "april_tag")
             return
+        if now - s.get("diag_logged", s["started"]) >= 5.0:
+            s["diag_logged"] = now
+            self.log(f"[ar_bridge] tag: no glasses frame processed for 5 s "
+                     f"({s.get('received', 0)} received so far); robot anchor "
+                     f"{'present' if self.world.anchor(self.cfg.tag_id) is not None else 'NO'}")
         if now - s["last_status"] >= self.cfg.status_period_s:
             est = s.get("estimate")
             if est is not None and s.get("solution") is None and \

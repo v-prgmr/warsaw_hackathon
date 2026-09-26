@@ -223,6 +223,10 @@ class TagAnchorNode(Node):
                     info["depth"] = "disagrees with PnP: ignored"
                 else:
                     T, info["depth"] = snapped, "used"
+        # wall check: a tag on a vertical wall has its y axis along map +z (small value); a
+        # large one means a wrong camera TF, and the glasses' registration would then refuse
+        info["tag_up_vs_map_up_deg"] = round(math.degrees(math.acos(
+            max(-1.0, min(1.0, float(T[2, 1]))))), 1)
         self.publish_anchor(T, info)
 
     def publish_anchor(self, T, info, force=False):

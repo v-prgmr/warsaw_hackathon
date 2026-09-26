@@ -132,6 +132,19 @@ B8. End the session (AGENTS.md section 19)
 
 TROUBLESHOOTING
 ---------------
+- Registration never finishes (the glasses hide their text above 80 %): read Terminal 3. During an
+  AprilTag registration the bridge prints a line like
+    tag: frames 14 received / 9 processed, last: ok; views 6/9 used, rms 1.2 px, sideways 0.18 m, ...;
+         anchor yes, tilt 1.3 deg; progress 84%; waiting for: sideways movement 0.18 m < 0.3 m ...
+  "waiting for:" names the blocker:
+    consistent views N/6       -> views disagree: step closer, move slower, more light
+    multi-view fit X px        -> glasses tracking/timing is poor: stand still at each step
+    sideways movement ...      -> step further sideways (0.3 m), or collect 12 good views
+    robot anchor: no TF ...    -> the bridge does not see map -> ar_tag_0: check tag_anchor (B5)
+    'up' disagrees ...         -> wrong robot camera TF (see tag_anchor's tag_up_vs_map_up_deg)
+  Failures and "registration stopped by the glasses" (Skip/Back) are printed too. The same data is
+  in `ros2 topic echo /ar_glasses/status` (tag_diagnosis). Do not press Skip: it leaves the glasses
+  unregistered (no `spectacles` TF).
 - Lens "Bridge not connected": laptop Wi-Fi and glasses on the SAME hotspot? Right IP (10.42.0.x,
   not 192.168.123.x)? Terminal 3 running? From the laptop: `nc -zv <wifi ip> 8787` must succeed.
 - "Waiting for the robot camera to see tag 0": do B5 (anchor missing).
