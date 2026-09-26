@@ -81,10 +81,11 @@ Which robot camera:
 * **Head RealSense** (default topics `/camera/color/image_raw`, `/camera/color/camera_info`,
   `/camera/aligned_depth_to_color/image_raw`): its extrinsic is in the URDF, but it looks 48° down
   (AGENTS.md §7), so put the tag **low on the wall or on the floor** ~1 m in front of the robot.
-* **Chest OAK-D**: best for a tag at chest height, but its topics are not verified yet and its
-  mount TF (`torso_link -> <oak frame>`) must exist (measured, or from the calibration package).
-  Pass `image_topic:=… camera_info_topic:=… depth_topic:=…` (depth aligned to the RGB image,
-  same size).
+* **Chest OAK-D** (`camera:=oak`): best for a tag at chest height. Uses `/oak/rgb/image_raw`,
+  `/oak/rgb/camera_info`, `/oak/stereo/image_raw` (expected per `OAKD_REALSENSE_TF.md`; check
+  them live) and the provisional mount `camera_link -> oak-d-base-frame` that `g1_sensors
+  tf_chain` publishes. Any other camera: `image_topic:=… camera_info_topic:=… depth_topic:=…`
+  (depth aligned to the RGB image, same size; otherwise PnP only).
 
 The image's `frame_id` must be the camera's **optical** frame (OpenCV axes).
 

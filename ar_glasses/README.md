@@ -206,8 +206,8 @@ scripts/run_humble.sh                                   # robot-connected contai
 colcon build --packages-select g1_ar_bridge && source install/setup.bash   # in /ws/g1_ws
 ros2 launch g1_sensors tf_chain.launch.py               # /tf (AGENTS.md §10.1)
 ros2 launch g1_mapping mapping.launch.py static_tf:=false
-# + the robot camera driver (head RealSense: realsense-ros with aligned depth)
-ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=0.16
+# + the robot camera driver on the Orin (chest OAK-D: OAKD_REALSENSE_TF.md; or head RealSense)
+ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=0.16 camera:=oak   # or camera:=realsense
 ```
 
 1. Stand the robot **still, 1-2 m in front of the tag**, facing it, until the log says

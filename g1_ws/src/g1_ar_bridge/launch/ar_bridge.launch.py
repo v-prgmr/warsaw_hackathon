@@ -3,10 +3,9 @@
 Needs our stack for TF (g1_sensors tf_chain + g1_mapping) and a robot camera that sees the wall
 tag. On the robot laptop (robot-connected container):
 
-    ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=0.16
-    # chest OAK-D instead of the head RealSense (topics to verify on the robot first):
-    ros2 launch g1_ar_bridge ar_bridge.launch.py image_topic:=<rgb> camera_info_topic:=<info> \
-        depth_topic:=<depth aligned to rgb>
+    ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=0.16               # RealSense
+    ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=0.16 camera:=oak   # chest OAK-D
+    # any other camera: image_topic:=... camera_info_topic:=... depth_topic:=...
 
 Then on the glasses: Dimensional OS -> this laptop's Wi-Fi IP -> Registration: AprilTag.
 """
@@ -15,6 +14,14 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+
+# depthai-ros topics expected per OAKD_REALSENSE_TF.md (RGB-aligned depth); check them live with
+# `ros2 topic list | grep /oak/` before relying on them. Explicit *_topic arguments win.
+CAMERA_PRESETS = {
+    "realsense": {},                                   # = config/ar_bridge.yaml
+    "oak": {"image_topic": "/oak/rgb/image_raw", "camera_info_topic": "/oak/rgb/camera_info",
+            "depth_topic": "/oak/stereo/image_raw"},
+}
 
 
 def _launch_setup(context):
@@ -31,6 +38,10 @@ def _launch_setup(context):
     if arg("port"):
         bridge["port"] = int(arg("port"))
     anchor = dict(common)
+    camera = arg("camera").lower()
+    if camera not in CAMERA_PRESETS:
+        raise RuntimeError(f"camera:={camera}: use one of {sorted(CAMERA_PRESETS)}")
+    anchor.update(CAMERA_PRESETS[camera])
     for name in ("image_topic", "camera_info_topic", "depth_topic", "anchor_file"):
         if arg(name):
             anchor[name] = arg(name)
@@ -55,6 +66,8 @@ def generate_launch_description():
                               description="AprilTag 36h11 id (both nodes); '' = config"),
         DeclareLaunchArgument("tag_black_size_m", default_value="",
                               description="edge of the tag's black square in m; '' = config"),
+        DeclareLaunchArgument("camera", default_value="realsense",
+                              description="robot camera preset for tag_anchor: realsense | oak"),
         DeclareLaunchArgument("image_topic", default_value="",
                               description="robot camera RGB image; '' = config (RealSense)"),
         DeclareLaunchArgument("camera_info_topic", default_value="",

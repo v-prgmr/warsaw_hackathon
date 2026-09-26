@@ -310,7 +310,7 @@ The head RealSense points at the floor, so a **chest-mounted OAK-D** is the sema
 - Publish RGB + depth **aligned to RGB at the same resolution** + CameraInfo, like the RealSense profile.
 - If the OAK-D is plugged into the laptop rather than the Orin, its stamps come from a different clock than the robot's streams (§7 Clock).
 - Mounting follows §25.2: ≤ 1 kg of extra hardware in total, on the torso or head, velcro / zip ties / manufacturer holes, no traces on removal, and it must not cover the LiDAR, cameras, vents, or indicators.
-- Its extrinsic is a **measured** static transform `torso_link -> <oak frame>`, checked in RViz (§10.1). No calibration.
+- Its extrinsic is the static transform `camera_link -> oak-d-base-frame` in `g1_sensors` (§10.1): **provisional**, from a ChArUco stereo fit against the head RealSense (`OAKD_REALSENSE_TF.md`, 2026-09-26; held-out 5.4 mm / 1.2°, the stricter gate not passed). Check OAK depth against the LiDAR before relying on cm-level POIs. Expected topics `/oak/rgb/image_raw`, `/oak/rgb/camera_info`, `/oak/stereo/image_raw` (RGB-aligned depth); the Foxy driver on the Orin segfaulted at launch on 2026-09-26 (blocker in `OAKD_REALSENSE_TF.md`).
 - RGB keyframes for POI queries are captured **while the robot is standing still** (settled); walking shakes the chest camera too.
 
 ## RealSense (head)
@@ -495,7 +495,7 @@ robot_center
 pelvis → waist joints → torso_link
   ├── mid360_link → livox_frame
   ├── d435_link   → camera_link → camera_color_optical_frame
-  └── <OAK-D mount> → OAK-D driver frames          (measured, static)
+  │                  └── camera_link → oak-d-base-frame → OAK-D driver frames   (provisional, static)
 ```
 
 **Extrinsics come from the G1 URDF** (`unitree_ros/robots/g1_description`: `d435_joint`, `mid360_joint` on `torso_link`), published on `/tf` by `robot_state_publisher` from `joint_states`. The waist joints move the head relative to the pelvis, so joint states are required.
@@ -521,7 +521,7 @@ Frame-convention glue that is not in the URDF must be an explicit, documented st
 - `d435_link -> camera_link`: identity, the realsense-ros root frame; unverified until the RealSense runs
 - `robot_center -> pelvis`: identity. Pelvis height 0.77 m (LiDAR) / 0.79 m (URDF feet) vs `/dog_odom` z 0.74 m
 - `imu_in_pelvis -> dog_imu_link`: identity. The pelvis IMU's gravity is ~1.5° off the torso-side sensors through the waist joints, constant over three waist poses (standing and hanging): a fixed offset (waist encoder zero or IMU mounting; unresolved). With `/dog_imu_raw` as the gravity reference the map tilts by that much; `g1_mapping imu_source:=livox` avoids it
-- `torso_link -> <OAK-D mount>`: measured by hand at mounting time; write the numbers down
+- `camera_link -> oak-d-base-frame`: provisional ChArUco fit against the RealSense (`OAKD_REALSENSE_TF.md`); replace only this link after depth/LiDAR checks
 
 Never pass XYZ coordinates without a `frame_id`.
 
@@ -1338,7 +1338,7 @@ Consequences:
 ### Day-1 task assignment (updated critical path A→B→C→D; semantic work in parallel)
 | Owner | Package(s) | Milestone | Offline-capable |
 |-------|-----------|-----------|-----------------|
-| A | `g1_sensors`: `/lowstate` → `/joint_states` bridge, `robot_state_publisher` (G1 URDF), static glue frames incl. the OAK-D mount (built; OAK-D mount still to add) | M0 | yes from `/lf/lowstate` bags |
+| A | `g1_sensors`: `/lowstate` → `/joint_states` bridge, `robot_state_publisher` (G1 URDF), static glue frames incl. the OAK-D mount (built; OAK-D mount provisional, `OAKD_REALSENSE_TF.md`) | M0 | yes from `/lf/lowstate` bags |
 | B | `g1_recorder` + existing `keyframe_manager` | M0 | yes after canonical bag |
 | C | `g1_mapping` (RTAB-Map LiDAR-inertial) bringup + tuning | M1→M3 | yes (from bag) |
 | D | URDF TF chain + physical-measurement validation + `scene_server` canonical outputs | M2→M3 | yes (from bag/map DB) |
@@ -1513,8 +1513,10 @@ Spectacles ──Wi-Fi──► g1_ar_bridge ar_bridge (robot laptop, ROS 2) ◄
   `map`); if the glasses finish first the bridge waits for the anchor. Valid for one RTAB-Map map:
   re-anchor after a new mapping session (a few seconds of standing in front of the tag).
   Nothing is mounted on the robot. Robot camera: the head RealSense (URDF extrinsic; it looks
-  48° down, so the tag goes low on the wall or on the floor) or the chest OAK-D (topics and the
-  `torso_link -> <oak frame>` TF still to verify, §7). Image `frame_id` = the optical frame.
+  48° down, so the tag goes low on the wall or on the floor) or the chest OAK-D
+  (`ar_bridge.launch.py camera:=oak`: `/oak/*` topics + the provisional `camera_link ->
+  oak-d-base-frame` mount in `g1_sensors`, §7; its driver still has to start on the Orin). Image
+  `frame_id` = the optical frame.
   Manual Placement (marker dragged onto the robot + the robot's `map` pose) stays as a fallback.
 - **Frames** (ownership in §6): `map -> ar_tag_<id>` (static, `tag_anchor`), `map -> ar_world`
   (static, published at each registration), `ar_world -> spectacles` (~2 Hz from the Lens's
