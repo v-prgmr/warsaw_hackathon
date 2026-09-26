@@ -295,13 +295,15 @@ The robot/Orin publishes only raw streams, all from Unitree's bare-DDS services 
 
 **The robot does not publish `/tf`.** Nothing needs "enabling" on the robot: `/tf`, `/joint_states`, `/odom`, `/map`, `/scan`, and POIs only exist while our host nodes run (§6 ownership table, §10.1). A bag contains `/tf` only if those nodes ran during the capture.
 
+**Clock.** All robot sensor topics (LiDAR, both IMUs, `/dog_odom`, `/lowstate`, battery) are published by Unitree's locomotion computer `192.168.123.161`, not the Orin (`.164`), and stamped with its clock. On 2026-09-26 that clock was 76.5 s behind the laptop and drifted ~0.2 s/h. Replay and RTAB-Map cope (RTAB-Map only warns). Live Nav2 and m-explore do not: they compare TF ages with the host clock, and our `/tf` is on the robot clock. An OAK-D plugged into the laptop would be 76 s off the LiDAR too. **Fix, laptop side only:** `.161` already runs an NTP server (stratum 10, reports synchronized), so every laptop that runs the live stack points its `systemd-timesyncd` at it (commands in `g1_ws/README.md` §5). Nothing changes on the robot; syncing the Orin would not help, because it does not stamp the sensor data. Status: **pending x-kom's OK.** Fallback if they object: our nodes translate robot stamps into laptop time (more code, in our stack and `rl_hnav`).
+
 ## OAK-D (chest camera, semantics)
 
 The head RealSense points at the floor, so a **chest-mounted OAK-D** is the semantic / POI camera.
 
 - Driver: `depthai-ros`. Topic names, frame names, model, and the host it is plugged into (Orin or laptop) must be verified on the hardware and then added to `g1_recorder/config/survey.yaml` and `g1_mapping/config/g1_mapping.yaml`. Do not guess them.
 - Publish RGB + depth **aligned to RGB at the same resolution** + CameraInfo, like the RealSense profile.
-- If the OAK-D is plugged into the laptop rather than the Orin, its stamps come from a different clock than the robot's streams (see the clock note in the addendum).
+- If the OAK-D is plugged into the laptop rather than the Orin, its stamps come from a different clock than the robot's streams (§7 Clock).
 - Mounting follows §25.2: ≤ 1 kg of extra hardware in total, on the torso or head, velcro / zip ties / manufacturer holes, no traces on removal, and it must not cover the LiDAR, cameras, vents, or indicators.
 - Its extrinsic is a **measured** static transform `torso_link -> <oak frame>`, checked in RViz (§10.1). No calibration.
 - RGB keyframes for POI queries are captured **while the robot is standing still** (settled); walking shakes the chest camera too.
@@ -1022,6 +1024,7 @@ When interacting with the physical G1:
 - maintain a `/cmd_vel` freshness timeout
 - do not bypass existing G1 safety / motion-switcher logic
 - do not assume a simulator-tested command is safe on hardware
+- end every live session with `scripts/stop_ros.sh` (inside the container) or `scripts/stop_humble.sh` (host), then check that none of our topics remain. Never `kill -9` a `ros2 launch`: its nodes are orphaned and keep publishing onto the robot's network. `kill -INT` on a launch started with `&` from a script does nothing, because bash starts background jobs with SIGINT ignored (both happened on 2026-09-26). Our Python nodes also exit when their launch process dies
 - replay bags only in an isolated DDS domain (`SIM=1 scripts/run_humble.sh` -> domain 77), never on the robot's domain 0 while connected: a replay republishes `/dog_odom`, `/lf/lowstate`, and the LiDAR, plus `/api/sport/request` and `/cmd_vel` from `live_run` bags, onto the live robot's network
 
 The organizer's (x-kom) rules for using the G1 are binding and take precedence over everything in this file. See **Section 25**.
@@ -1076,7 +1079,7 @@ Mitigations:
 - capture POI keyframes only while the robot stands still
 - adequate lighting
 - mount the OAK-D so target objects (tables, ~0.5–3 m away) are in view; check the view before recording
-- verify the OAK-D stamps share the robot's clock (plug it into the Orin), or align clocks
+- verify the OAK-D stamps share the robot's clock, or sync the laptop to the robot (§7 Clock)
 
 ## Risk 3 — Sensor timing / DDS issues
 
@@ -1303,7 +1306,7 @@ Consequences:
 - Extrinsics come from the G1 URDF via `/tf` + `joint_states`. Verification is an RViz sanity check only, with no calibration (§10.1). Until bags contain `/tf`, `g1_mapping` ships **estimated** static transforms (ground-plane fits on depth / LiDAR, cross-checked against the URDF) for replaying legacy bags; they are not a calibration.
 - Exploration (M5) uses m-explore for ROS 2 (`explore_lite`) on top of Nav2 and the RTAB-Map `/map` (§15).
 - 2D grid: `Grid/MaxGroundHeight` set and the IMU fed to the `rtabmap` node. On `full_survey_take_01`, table-height cells went from 69 occupied / 357 free to 245 / 10.
-- The recording laptop's clock was ~72 s ahead of the robot's clock (`full_survey_take_01`). Replay is unaffected (header stamps), but live Nav2 / TF timeouts need aligned clocks: fix it on the laptop side only (§25.2 forbids robot network/OS changes) or run the stack on the Orin.
+- The recording laptop's clock was ~72 s ahead of the robot's clock (`full_survey_take_01`). Replay is unaffected (header stamps), but live Nav2 / TF timeouts need aligned clocks. Fix (2026-09-26, pending x-kom's OK): laptops sync to the NTP server that the robot's locomotion computer `.161` already runs (§7 Clock); nothing changes on the robot.
 
 ### Update — OAK-D chest camera, `/tf`, ownership (2026-09-25, night)
 
@@ -1375,7 +1378,7 @@ sees zero robot topics). Procedure:
 
 Sensors driven by the Orin (RealSense, LiDAR, odom; the OAK-D only if plugged into the Orin) share its
 clock → cross-sensor time sync is a non-issue for them; the recorder uses message header stamps. The
-*recording laptop's* clock is separate (~72 s offset observed).
+*recording laptop's* clock is separate (72–76 s offset observed). The LiDAR, IMU, odom and `lowstate` stamps actually come from the locomotion computer `.161`, not the Orin; see §7 Clock.
 
 After R5 canonical capture, the next core test is:
 
