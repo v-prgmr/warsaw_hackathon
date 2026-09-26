@@ -96,7 +96,7 @@ Which robot camera:
 * **Chest OAK-D** (`camera:=oak`): best for a tag at chest height. Uses `/oak/rgb/image_raw`,
   `/oak/rgb/camera_info`, `/oak/stereo/image_raw` (expected per `OAKD_REALSENSE_TF.md`; check
   them live) and the provisional mount `camera_link -> oak-d-base-frame` that `g1_sensors
-  tf_chain` publishes. Any other camera: `image_topic:=… camera_info_topic:=… depth_topic:=…`
+  tf_chain` publishes (OAK depth / LiDAR ICP fit, `g1_sensors/config/oakd_livox_provisional.yaml`). Any other camera: `image_topic:=… camera_info_topic:=… depth_topic:=…`
   (depth aligned to the RGB image, same size; otherwise PnP only).
 
 The image's `frame_id` must be the camera's **optical** frame (OpenCV axes).
