@@ -110,7 +110,8 @@ See `g1_recorder/README.md` for the full command reference and the frozen keyfra
 All sensor topics come from Unitree's locomotion computer `192.168.123.161` and carry its clock,
 which ran 76.5 s behind the laptop (2026-09-26). RTAB-Map and replay cope; Nav2 and m-explore
 compare TF ages with the laptop clock and stop working. `.161` already runs an NTP server, so the
-laptop can follow it; nothing changes on the robot (AGENTS.md §7, Clock; pending x-kom's OK):
+laptop can follow it; nothing changes on the robot (AGENTS.md §7, Clock; approved by x-kom on
+2026-09-26):
 
 ```bash
 sudo mkdir -p /etc/systemd/timesyncd.conf.d

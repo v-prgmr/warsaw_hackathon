@@ -4,9 +4,10 @@
                                                        -> d435_link   -> camera_link
                         -> imu_in_pelvis -> dog_imu_link
 
-Read-only towards the robot: subscribes to /lowstate and /dog_imu_raw, publishes /joint_states,
-/tf, /tf_static and /robot_description. odom -> robot_center comes from g1_mapping (run it with
-static_tf:=false). Topic names, joint order, and glue frames live in config/g1_sensors.yaml.
+Read-only towards the robot: subscribes to /lf/lowstate, the LiDAR IMU and /lf/bmsstate, publishes
+/joint_states, /tf, /tf_static, /robot_description and /battery_state. odom -> robot_center comes
+from g1_mapping (run it with static_tf:=false). Topic names, joint order, and glue frames live in
+config/g1_sensors.yaml.
 
 Live (robot-connected container):   ros2 launch g1_sensors tf_chain.launch.py
 Replay (SIM=1 container, domain 77): ros2 launch g1_sensors tf_chain.launch.py use_sim_time:=true

@@ -57,7 +57,8 @@ Topic names, the joint order, and the glue frames live in `config/g1_sensors.yam
   (unitree_sdk2 `G1JointIndex`, waist yaw = 12).
 - **Stamps:** `LowState` has no header. Joint states are stamped on the **robot clock**: receive
   time + the median of (LiDAR IMU header stamp − receive time) over 2 s. `/tf` therefore
-  lines up with LiDAR and IMU stamps even though the laptop clock is ~73 s ahead. In replay the
+  lines up with LiDAR and IMU stamps even when the laptop clock is off (it was 73–76 s ahead before
+  the laptops were synced to the robot, `g1_ws/README.md` §5). In replay the
   estimate is only as fine as `/clock`, so play with `--clock 200`.
 - **Rate:** 20 Hz from `/lf/lowstate`, live and on survey bags. Measured live: it is as fresh as
   the 1 kHz `/lowstate` (tick lag 0–1 ms). Reading the 1 kHz streams in this Python node cost ~70 %
