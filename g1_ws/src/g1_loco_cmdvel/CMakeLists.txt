@@ -64,6 +64,7 @@ if(TARGET g1_loco_client)
   install(TARGETS g1_loco_client g1_bms_probe
     DESTINATION lib/${PROJECT_NAME})
 endif()
+install(PROGRAMS scripts/stage4_single_command.py DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
 install(FILES README.md DESTINATION share/${PROJECT_NAME})
 

@@ -9,7 +9,9 @@
 # network. Run this as a script: a `pkill -f <pattern>` typed into `bash -c` also matches that shell.
 set -u
 TIMEOUT="${1:-20}"
-ROS='--ros-args|/ros2 (launch|run|bag) '   # launched nodes always carry --ros-args
+# Launched nodes always carry --ros-args. g1_loco_client (Unitree SDK, no ROS) is started by path
+# in the Stage 4 test; on SIGINT it calls StopMove before it exits.
+ROS='--ros-args|/ros2 (launch|run|bag) |/g1_loco_client( |$)'
 
 wait_gone() {  # pattern, seconds
   for _ in $(seq $(($2 * 10))); do pgrep -f -- "$1" >/dev/null || return 0; sleep 0.1; done
