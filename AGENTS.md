@@ -154,6 +154,8 @@ Re-use the established `unitree_bridge` / isolated-DDS pattern where needed.
 
 Avoid introducing unnecessary RMW changes once a working configuration is established.
 
+Applied in `g1_loco_cmdvel` (§13): the Unitree SDK runs only in `g1_loco_client`, a separate process that receives velocity packets from the ROS node `cmd_vel_gateway` over a Unix socket. `g1_sensors` reads `LowState` / `BmsState` through the `unitree_hg` ROS 2 messages, with no SDK in the process.
+
 ---
 
 ---
@@ -254,11 +256,12 @@ The robot only publishes raw sensor streams. Everything else comes from nodes **
 | `robot_center -> pelvis -> … URDF links`, `/joint_states` | `g1_sensors tf_chain`: `robot_state_publisher` (G1 URDF) + the `/lowstate` bridge (§10.1) |
 | frames not in the URDF (`livox_frame`, `camera_link`, `dog_imu_link`, OAK-D mount, `robot_center -> pelvis`) | `g1_sensors tf_chain` static glue (§10.1); `g1_mapping static_tf:=true` only for legacy bags without `/tf` or `/lf/lowstate` |
 | camera-internal frames | the RealSense / OAK-D drivers (`/tf_static`) |
-| `/scan` | `pointcloud_to_laserscan` (from the `rl_hnav` bridge) |
-| `/cmd_vel` → legs | Nav2 → locomotion executor (Loco/Sport client, or `rl_hnav` under §25) |
+| `/scan` | `pointcloud_to_laserscan` + `scan_restamper` (`override_stamp:=false`) from `rl_hnav`: run standalone (`rl_hnav/README.md`) or via `real_robot_bridge.launch.py` with its switches off (§14) |
+| `/battery_state` | `g1_sensors` `bms_to_battery_state` (from `/lf/bmsstate`, SOC 0–100 → 0.0–1.0), started by `tf_chain.launch.py` |
+| `/cmd_vel` → legs | Nav2 → `g1_loco_cmdvel` (`cmd_vel_gateway` → `g1_loco_client` → Loco `SetVelocity`; disabled by default, §13), or `rl_hnav` under §25 |
 | frontier goals | `explore_lite` (m-explore) |
 
-When `rl_hnav`'s real-robot bridge (§14) runs together with `g1_mapping`, **disable** its `odom_tf_bridge` (`odom -> robot_center`), its static `robot_center -> lidar` transform, and SLAM Toolbox. Keep its `/scan` pipeline and `/cmd_vel` consumer. Two publishers of the same transform make TF jump; `/dog_odom` is also ~2× short (§8).
+When `rl_hnav`'s real-robot bridge (§14) runs together with `g1_mapping`, **disable** its `odom_tf_bridge` (`odom -> robot_center`), its static `robot_center -> lidar` transform, and SLAM Toolbox (launch args `publish_odom_tf:=false publish_lidar_tf:=false override_scan_stamp:=false`, plus `use_slam:=false` in `real_robot_nav_slam.launch.py`). Keep its `/scan` pipeline and `/cmd_vel` consumer. Two publishers of the same transform make TF jump; `/dog_odom` is also ~2× short (§8).
 
 ---
 
@@ -295,7 +298,7 @@ The robot/Orin publishes only raw streams, all from Unitree's bare-DDS services 
 
 **The robot does not publish `/tf`.** Nothing needs "enabling" on the robot: `/tf`, `/joint_states`, `/odom`, `/map`, `/scan`, and POIs only exist while our host nodes run (§6 ownership table, §10.1). A bag contains `/tf` only if those nodes ran during the capture.
 
-**Clock.** All robot sensor topics (LiDAR, both IMUs, `/dog_odom`, `/lowstate`, battery) are published by Unitree's locomotion computer `192.168.123.161`, not the Orin (`.164`), and stamped with its clock. On 2026-09-26 that clock was 76.5 s behind the laptop and drifted ~0.2 s/h. Replay and RTAB-Map cope (RTAB-Map only warns). Live Nav2 and m-explore do not: they compare TF ages with the host clock, and our `/tf` is on the robot clock. An OAK-D plugged into the laptop would be 76 s off the LiDAR too. **Fix, laptop side only:** `.161` already runs an NTP server (stratum 10, reports synchronized), so every laptop that runs the live stack points its `systemd-timesyncd` at it (commands in `g1_ws/README.md` §5). Nothing changes on the robot; syncing the Orin would not help, because it does not stamp the sensor data. Status: **pending x-kom's OK.** Fallback if they object: our nodes translate robot stamps into laptop time (more code, in our stack and `rl_hnav`).
+**Clock.** All robot sensor topics (LiDAR, both IMUs, `/dog_odom`, `/lowstate`, battery) are published by Unitree's locomotion computer `192.168.123.161`, not the Orin (`.164`), and stamped with its clock. On 2026-09-26 that clock was 76.5 s behind the laptop and drifted ~0.2 s/h. Replay and RTAB-Map cope (RTAB-Map only warns). Live Nav2 and m-explore do not: they compare TF ages with the host clock, and our `/tf` is on the robot clock. An OAK-D plugged into the laptop would be 76 s off the LiDAR too. **Fix, laptop side only:** `.161` already runs an NTP server (stratum 10, reports synchronized), so every laptop that runs the live stack points its `systemd-timesyncd` at it (commands in `g1_ws/README.md` §5). Nothing changes on the robot; syncing the Orin would not help, because it does not stamp the sensor data. Status: **approved by x-kom on 2026-09-26**; every laptop that runs the live stack must be synced before a live run.
 
 ## OAK-D (chest camera, semantics)
 
@@ -634,6 +637,8 @@ For V1, use the OAK-D depth as the geometric source for the object whenever poss
 
 `rl_hnav` is a G1 locomotion / navigation execution option. Under the event rules, the preferred fast path is the Unitree high-level Loco/Sport client; `rl_hnav` remains the low-level option when the Section 25 safety requirements are satisfied.
 
+The high-level path is implemented in `g1_ws/src/g1_loco_cmdvel` (2026-09-26): `/cmd_vel` → `cmd_vel_gateway` (ROS) → Unix socket → `g1_loco_client` (Unitree SDK, separate process, §5) → `LocoClient::SetVelocity`. No actuation by default: the gateway starts with `enabled:=false`, and the client stays dry-run unless given both `--enabled=true` and `--i-accept-high-level-actuation=true` on the wired robot interface. Each process clamps velocity on its own (0.10 / 0.05 m/s, 0.20 rad/s). Each also requires fresh battery ≥ 20 %: the gateway from `/battery_state`, the client from the raw `rt/lf/bmsstate`. They send zero / `StopMove` after 0.30 s without a command and on exit, and every `SetVelocity` lasts only 0.20 s. Procedure and tests: `g1_loco_cmdvel/README.md`.
+
 Do not treat it as the mapping / reconstruction system. RTAB-Map is the primary metric mapping backbone.
 
 The useful interface is:
@@ -723,9 +728,9 @@ Nav2
 rl_hnav
 ```
 
-The static LiDAR extrinsic in `rl_hnav` currently needs to be verified / calibrated on the actual G1.
+The static LiDAR extrinsic in `rl_hnav` was fixed on 2026-09-26. Its default is now the G1 URDF chain (z 0.472 m, roll π, pitch 0.065): the old all-zero default mirrored `/scan` left-right, and the static-TF call had swapped roll and yaw.
 
-**With `g1_mapping` running (default), use only the `/scan` part and the `/cmd_vel` consumer of this bridge.** Disable `odom_tf_bridge`, the static `robot_center -> lidar` transform, and SLAM Toolbox; `g1_mapping` owns `/odom`, `odom -> robot_center`, `/map`, and `map -> odom` (§6 ownership table).
+**With `g1_mapping` running (default), use only the `/scan` part and the `/cmd_vel` consumer of this bridge.** Disable `odom_tf_bridge`, the static `robot_center -> lidar` transform, and SLAM Toolbox (`publish_odom_tf:=false publish_lidar_tf:=false override_scan_stamp:=false`, `use_slam:=false`), or run only `pointcloud_to_laserscan` + `scan_restamper` as in `rl_hnav/README.md`; `g1_mapping` owns `/odom`, `odom -> robot_center`, `/map`, and `map -> odom` (§6 ownership table).
 
 ---
 
@@ -764,6 +769,12 @@ next frontier  (stop when no frontiers are left; optional return_to_init)
 `explore_lite` settings for the G1: `robot_base_frame: robot_center`, `costmap_topic: /map`. Pause and resume exploration with `explore/resume` (`std_msgs/Bool`), e.g. to capture keyframes or when the operator needs to stop.
 
 Capture after the robot has stopped / settled.
+
+**Command-only testing before any walking goal** (`rl_hnav/README.md`, 2026-09-26):
+
+- `ros2 launch g1_nav2 rtabmap_nav_dry_run.launch.py`: Nav2 on the RTAB-Map `/map` + our TF, with no SLAM Toolbox, odom bridge, or locomotion node. The controller writes to `/g1_nav2_dry_run/cmd_vel_raw`, and the smoother and recoveries write to `/g1_nav2_dry_run/cmd_vel`. Check that `/cmd_vel` has **zero publishers** before sending a goal.
+- `ros2 run g1_nav2 check_rtabmap_plan`: a read-only preflight. It checks TF, `/scan`, costmaps and fresh `/battery_state`, then calls `ComputePathToPose` only. A standing-only map reports `NOT READY`: survey with the vendor remote first.
+- explore_lite, command-only: on a harness-supported stationary G1 it found a frontier and Nav2 accepted the goal (2026-09-26), with the Loco client off. The local m-explore patch keeps the active goal while SLAM updates; `progress_timeout` is 60 s.
 
 V1 environment assumption:
 
@@ -895,7 +906,7 @@ Preferred fast / lower-risk executor under event rules:
 
 ```text
 high-level Unitree Loco/Sport client
-Move(vx, vy, wz)
+Move(vx, vy, wz)      # implemented: g1_loco_cmdvel (SetVelocity), §13
 ```
 
 `rl_hnav` remains a valid low-level option only if the organizer low-level-control requirements are satisfied.
@@ -948,6 +959,7 @@ Preferred project split:
 g1_sensors
 g1_recorder
 g1_mapping / rtabmap_bringup
+g1_loco_cmdvel        # /cmd_vel -> high-level Loco SetVelocity, safety-gated (§13)
 scene_server
 semantic_query
 ```
@@ -1036,7 +1048,8 @@ sensor streams verified
 TF verified
 odom verified
 /cmd_vel visible
-rl_hnav dry-run verified
+executor dry-run verified (g1_loco_cmdvel Stage-3 dry run, or rl_hnav)
+Nav2 command-only test passed (§15)
 physical safety zone prepared
 ```
 
@@ -1208,9 +1221,9 @@ Preferred high-level path:
 ```text
 /cmd_vel or equivalent velocity command
     ↓
-high-level Unitree Loco/Sport client
+g1_loco_cmdvel: cmd_vel_gateway -> g1_loco_client (high-level Unitree Loco client)
     ↓
-Move(vx, vy, wz)
+SetVelocity(vx, vy, wz)
 ```
 
 Optional low-level path, only when Section 25 requirements are satisfied:
@@ -1306,14 +1319,14 @@ Consequences:
 - Extrinsics come from the G1 URDF via `/tf` + `joint_states`. Verification is an RViz sanity check only, with no calibration (§10.1). Until bags contain `/tf`, `g1_mapping` ships **estimated** static transforms (ground-plane fits on depth / LiDAR, cross-checked against the URDF) for replaying legacy bags; they are not a calibration.
 - Exploration (M5) uses m-explore for ROS 2 (`explore_lite`) on top of Nav2 and the RTAB-Map `/map` (§15).
 - 2D grid: `Grid/MaxGroundHeight` set and the IMU fed to the `rtabmap` node. On `full_survey_take_01`, table-height cells went from 69 occupied / 357 free to 245 / 10.
-- The recording laptop's clock was ~72 s ahead of the robot's clock (`full_survey_take_01`). Replay is unaffected (header stamps), but live Nav2 / TF timeouts need aligned clocks. Fix (2026-09-26, pending x-kom's OK): laptops sync to the NTP server that the robot's locomotion computer `.161` already runs (§7 Clock); nothing changes on the robot.
+- The recording laptop's clock was ~72 s ahead of the robot's clock (`full_survey_take_01`). Replay is unaffected (header stamps), but live Nav2 / TF timeouts need aligned clocks. Fix (approved by x-kom, 2026-09-26): laptops sync to the NTP server that the robot's locomotion computer `.161` already runs (§7 Clock); nothing changes on the robot.
 
 ### Update — OAK-D chest camera, `/tf`, ownership (2026-09-25, night)
 
 - **Semantics move to a chest-mounted OAK-D** (the head RealSense looks at the floor). Topic / frame names, model, and host are to be verified, then added to `survey.yaml` and `g1_mapping.yaml` (§7).
 - **The robot publishes no `/tf`.** It comes from `g1_sensors tf_chain`: our `/lowstate` bridge + `robot_state_publisher` (G1 29-DoF rev 1.0 URDF) + static glue frames (§10.1). No bag has had `/tf` so far because it did not run during capture.
 - **Ownership contract** for TF and topics, including which parts of `rl_hnav`'s bridge to disable next to `g1_mapping`: §6.
-- Current people: Vishal — locomotion (`rl_hnav`) + exploration (m-explore); Inko — OAK-D chest mount; stanislawix — `g1_mapping` (C) and the `/tf` chain (A, `g1_sensors`; checked offline on a standing bag and live on the hanging robot, 2026-09-26: TF at every LiDAR stamp, `g1_mapping` live at 10 Hz on top of it).
+- Current people: Vishal — locomotion (`rl_hnav`, `g1_loco_cmdvel`) + exploration (m-explore; Nav2 command-only on RTAB-Map, §15); Inko — OAK-D chest mount; stanislawix — `g1_mapping` (C) and the `/tf` chain (A, `g1_sensors`; checked offline on a standing bag and live on the hanging robot, 2026-09-26: TF at every LiDAR stamp, `g1_mapping` live at 10 Hz on top of it).
 
 ### Day-1 task assignment (updated critical path A→B→C→D; semantic work in parallel)
 | Owner | Package(s) | Milestone | Offline-capable |
@@ -1404,7 +1417,7 @@ Source: the hackathon's G1 usage regulations from x-kom (paraphrased from the Po
 Implications for this project:
 - Perception work (M0–M4) needs only sensors + built-in/high-level modes. No `lowcmd` is needed. Keep it that way.
 - `rl_hnav` publishes `LowCmd` -> it is the **low-level tier**. See M5.
-- Preferred `/cmd_vel` executor for a fast, low-risk path: high-level SDK Loco/Sport client `Move(vx, vy, wz)`; `rl_hnav` only if the low-level requirements are met.
+- Preferred `/cmd_vel` executor for a fast, low-risk path: high-level SDK Loco/Sport client, implemented as `g1_loco_cmdvel` (§13); `rl_hnav` only if the low-level requirements are met.
 - Default for any agent-written code: no actuation. Opt-in only (consistent with Section 19).
 
 ## 25.2 Prohibitions relevant to code and setup
@@ -1415,7 +1428,7 @@ Implications for this project:
 - No free-standing custom leg control without a prior harness trial and a running supervisor.
 - Nothing carried in hands during low-level trials. During built-in locomotion only closed, unbreakable objects within the hand payload limit. No open liquids, glass, hot or sharp items.
 - No hard power cut. Shutdown = OS shutdown, then the switch (exception: danger to people).
-- Do not walk the robot below **20 %** battery; do not run actuators below **10 %**. Original charger only, supervised. Code should read battery state and refuse/abort motion under those thresholds.
+- Do not walk the robot below **20 %** battery; do not run actuators below **10 %**. Original charger only, supervised. Code should read battery state and refuse/abort motion under those thresholds. Implemented for high-level walking in `g1_loco_cmdvel`: both processes block and stop below 20 % or on a stale battery signal (§13).
 - Do **not** change firmware, OS, system account passwords, or network configuration (adding the event network is the only exception). Do not remove x-kom SSH keys. Our own SSH keys/accounts may be added onboard and must be listed at return.
   - Consequence for agents: do not `apt upgrade`, change kernel/OS settings, netplan/NetworkManager config, DDS/network interface config on the robot, etc. Keep installs (e.g. `realsense-ros`) scoped, minimal, documented, and reversible; prefer running heavy stacks on the dev machine / Docker. Existing `unitree_bridge` / DDS setup must be used as-is.
 - No disassembly (except hands), drilling, gluing. Never cover cameras, LiDAR, vents or indicators. Do not attach devices to robot connectors that could damage it.
