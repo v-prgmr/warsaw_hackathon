@@ -495,7 +495,7 @@ pelvis → waist joints → torso_link
 
 **The robot does not publish `/tf`.** We produce it on the host with `g1_ws/src/g1_sensors` (`ros2 launch g1_sensors tf_chain.launch.py`):
 
-1. `/lowstate` → `/joint_states` bridge, stamped on the robot clock (via `/dog_imu_raw` stamps). It reads `/lowstate` with the `unitree_hg` ROS 2 messages; no Unitree SDK in the process (§5)
+1. `/lf/lowstate` → `/joint_states` bridge (20 Hz; measured live, `/lf/lowstate` is as fresh as the 1 kHz `/lowstate`), stamped on the robot clock via the LiDAR IMU's header stamps. It reads `LowState` with the `unitree_hg` ROS 2 messages; no Unitree SDK in the process (§5)
 2. `robot_state_publisher` with `g1_29dof_rev_1_0.urdf` (29-DoF, confirmed; all rev 1.0 variants share the sensor mounts, and rev 1.0's upside-down MID-360 matches the data; the older `g1_29dof.urdf` does not)
 3. the static glue frames below (`g1_sensors/config/g1_sensors.yaml`)
 4. `odom -> robot_center` from `g1_mapping` (§6 ownership table)
@@ -513,7 +513,7 @@ Frame-convention glue that is not in the URDF must be an explicit, documented st
 - `mid360_link -> livox_frame`: identity. Verified on a standing bag: the LiDAR floor normal, the LiDAR IMU, and the torso IMU agree within 0.35° through the URDF
 - `d435_link -> camera_link`: identity, the realsense-ros root frame; unverified until the RealSense runs
 - `robot_center -> pelvis`: identity. Pelvis height 0.77 m (LiDAR) / 0.79 m (URDF feet) vs `/dog_odom` z 0.74 m
-- `imu_in_pelvis -> dog_imu_link`: identity. The pelvis IMU's gravity is ~1.5° off the torso-side sensors through the waist joints (waist encoder zero or IMU mounting; unresolved). With `/dog_imu_raw` as the gravity reference the map tilts by that much; `g1_mapping imu_source:=livox` avoids it
+- `imu_in_pelvis -> dog_imu_link`: identity. The pelvis IMU's gravity is ~1.5° off the torso-side sensors through the waist joints, constant over three waist poses (standing and hanging): a fixed offset (waist encoder zero or IMU mounting; unresolved). With `/dog_imu_raw` as the gravity reference the map tilts by that much; `g1_mapping imu_source:=livox` avoids it
 - `torso_link -> <OAK-D mount>`: measured by hand at mounting time; write the numbers down
 
 Never pass XYZ coordinates without a `frame_id`.
@@ -1310,7 +1310,7 @@ Consequences:
 - **Semantics move to a chest-mounted OAK-D** (the head RealSense looks at the floor). Topic / frame names, model, and host are to be verified, then added to `survey.yaml` and `g1_mapping.yaml` (§7).
 - **The robot publishes no `/tf`.** It comes from `g1_sensors tf_chain`: our `/lowstate` bridge + `robot_state_publisher` (G1 29-DoF rev 1.0 URDF) + static glue frames (§10.1). No bag has had `/tf` so far because it did not run during capture.
 - **Ownership contract** for TF and topics, including which parts of `rl_hnav`'s bridge to disable next to `g1_mapping`: §6.
-- Current people: Vishal — locomotion (`rl_hnav`) + exploration (m-explore); Inko — OAK-D chest mount; stanislawix — `g1_mapping` (C) and the `/tf` chain (A, `g1_sensors`; built and checked offline on a standing bag, not yet run live).
+- Current people: Vishal — locomotion (`rl_hnav`) + exploration (m-explore); Inko — OAK-D chest mount; stanislawix — `g1_mapping` (C) and the `/tf` chain (A, `g1_sensors`; checked offline on a standing bag and live on the hanging robot, 2026-09-26: TF at every LiDAR stamp, `g1_mapping` live at 10 Hz on top of it).
 
 ### Day-1 task assignment (updated critical path A→B→C→D; semantic work in parallel)
 | Owner | Package(s) | Milestone | Offline-capable |
