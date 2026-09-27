@@ -1,83 +1,95 @@
 #!/usr/bin/env bash
-# Companion to start_g1_navigation.sh. Stops host-side project processes only.
-set -euo pipefail
+# Companion to start_g1_navigation.sh and start_g1_explore_navigation.sh. Order (AGENTS.md §19):
+#   1. the Loco executor first: SIGINT to g1_loco_client (it calls StopMove) and cmd_vel_gateway
+#   2. then the frontier explorer, Nav2, the /scan bridge, the velocity monitor and the navigation
+#      RViz (SIGINT, TERM, KILL)
+#   3. its own container g1-nav: everything else there (TF, map: RTAB-Map saves its database), then
+#      the container. Joined to start_g1_session (g1-robot): only the navigation, the session stays.
+# Never kill -9 a launch first: its nodes are orphaned and keep publishing onto the robot's network.
+set -uo pipefail
 ROOT=$(realpath "$(dirname "${BASH_SOURCE[0]}")/..")
+CONTAINER=g1-nav
+SESSION_CONTAINER=g1-robot
 
-if [[ ${1:-} == --help || ${1:-} == -h ]]; then
-  printf 'Usage: bash scripts/stop_g1_navigation.sh\nStops ROS/Loco processes, project RViz instances and cmd_vel monitors.\nTerminal windows remain open so their output can be inspected.\n'
-  exit 0
+# Anchored on the process's own argv[0], so the windows' wrapper shells (whose arguments contain
+# the same command text) and this script are never matched.
+EXECUTOR='^[^ ]*/g1_loco_client( |$)|^[^ ]*/cmd_vel_gateway( |$)|^[^ ]*python3 [^ ]*/ros2 run g1_loco_cmdvel '
+NAV="$EXECUTOR"'|^[^ ]*python3 [^ ]*/ros2 (launch (g1_nav2|humanoid_nav_bridge) |run (g1_nav2|explore_lite) |topic echo [^ ]*cmd_vel)|^[^ ]*/explore_lite/explore( |$)|^[^ ]*rviz2 -d [^ ]*g1_nav_minimal'
+
+pids_with_children() {  # pattern -> matching PIDs and all their descendants
+  local all frontier kids
+  all=$(pgrep -f -- "$1")
+  frontier=$all
+  while [[ -n $frontier ]]; do
+    kids=$(for p in $frontier; do pgrep -P "$p"; done)
+    all="$all $kids"
+    frontier=$kids
+  done
+  echo $all | tr ' ' '\n' | grep -v "^$$\$" | sort -un
+}
+
+stop_matching() {  # pattern, label, seconds to wait after SIGINT
+  local pids
+  pids=$(pids_with_children "$1")
+  [[ -n $pids ]] || { echo "$2: none running"; return 0; }
+  echo "$2: SIGINT"; ps -o pid=,args= -p "$(echo $pids | tr ' ' ',')" | cut -c1-150
+  kill -INT $pids 2>/dev/null
+  for sig in TERM KILL; do
+    for _ in $(seq $(($3 * 10))); do
+      pids=$(for p in $pids; do kill -0 "$p" 2>/dev/null && echo "$p"; done)
+      [[ -z $pids ]] && { echo "$2: stopped"; return 0; }
+      sleep 0.1
+    done
+    echo "$2: still running, SIG$sig"; kill -"$sig" $pids 2>/dev/null
+    set -- "$1" "$2" 3
+  done
+  sleep 1
+  for p in $pids; do kill -0 "$p" 2>/dev/null && { echo "$2: could not stop $p"; return 1; }; done
+  return 0
+}
+
+inside() {  # runs where the nodes are (container or host)
+  local status=0
+  stop_matching "$EXECUTOR" "Loco executor (StopMove)" 5 || status=1
+  stop_matching "$NAV" "explorer, Nav2, /scan, monitor, RViz" 20 || status=1
+  if [[ ${1:-} == all ]]; then
+    bash "$(dirname "$0")/stop_ros.sh" || status=1      # TF, map and anything else left
+  fi
+  return $status
+}
+
+case "${1:-}" in
+  -h|--help)
+    echo "Usage: bash scripts/stop_g1_navigation.sh   (stops what start_g1_navigation.sh started)"
+    echo "Windows stay open for their logs. The remote's e-stop is the emergency stop, not this."
+    exit 0 ;;
+  --inside) inside "${2:-}"; exit $? ;;
+  "") ;;
+  *) echo "Unexpected argument. Use --help." >&2; exit 2 ;;
+esac
+
+running() { docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$1"; }
+status=0
+did=false
+if running "$CONTAINER"; then
+  echo "== container $CONTAINER"
+  docker exec "$CONTAINER" bash /ws/scripts/stop_g1_navigation.sh --inside all || status=1
+  docker stop "$CONTAINER" >/dev/null && echo "stopped container $CONTAINER"
+  did=true
 fi
-if (($#)); then
-  printf 'Unexpected argument. Use --help.\n' >&2
-  exit 2
+if running "$SESSION_CONTAINER"; then
+  echo "== navigation inside $SESSION_CONTAINER (the session keeps running)"
+  docker exec "$SESSION_CONTAINER" bash /ws/scripts/stop_g1_navigation.sh --inside || status=1
+  did=true
 fi
-
-# Existing project shutdown sends SIGINT first, allowing the Loco client to
-# attempt StopMove and RTAB-Map to save its database before any escalation.
-ros_status=0
-bash "$ROOT/scripts/stop_ros.sh" || ros_status=$?
-
-# Standalone RViz and topic-echo commands may not contain --ros-args and thus
-# escape stop_ros.sh. Match their actual argv, not terminal-wrapper shell text.
-python3 - "$ROOT" <<'PY'
-import os
-from pathlib import Path
-import signal
-import sys
-import time
-
-root = sys.argv[1]
-
-def remaining():
-    result = []
-    for entry in Path('/proc').iterdir():
-        if not entry.name.isdigit():
-            continue
-        try:
-            if entry.stat().st_uid != os.getuid():
-                continue
-            raw = (entry / 'cmdline').read_bytes()
-            args = [s.decode(errors='replace') for s in raw.split(b'\0') if s]
-            if not args:
-                continue
-            project_rviz = (Path(args[0]).name == 'rviz2' and
-                            any(a.startswith(root + '/') for a in args[1:]))
-            ros_index = next((i for i, a in enumerate(args[:2])
-                              if Path(a).name == 'ros2'), None)
-            monitor = False
-            if ros_index is not None:
-                command = args[ros_index + 1:]
-                monitor = (command[:2] == ['topic', 'echo'] and
-                           any(a == '/cmd_vel' or a.endswith('/cmd_vel') or
-                               a.endswith('/cmd_vel_raw') for a in command[2:]))
-            if project_rviz or monitor:
-                result.append((int(entry.name), args))
-        except (OSError, ProcessLookupError):
-            continue
-    return result
-
-for sig, wait in ((signal.SIGINT, 5), (signal.SIGTERM, 3)):
-    processes = remaining()
-    if not processes:
-        break
-    for pid, args in processes:
-        try:
-            os.kill(pid, sig)
-            print(f'{sig.name} -> {pid}: {" ".join(args)}', flush=True)
-        except ProcessLookupError:
-            pass
-    deadline = time.monotonic() + wait
-    while time.monotonic() < deadline and remaining():
-        time.sleep(0.1)
-left = remaining()
-if left:
-    print(f'Processes still running: {left}', file=sys.stderr)
-    sys.exit(1)
-print('Project RViz and velocity monitors stopped.')
-PY
-
-if ((ros_status)); then
-  printf 'ROS shutdown reported an error; inspect the output above.\n' >&2
-  exit "$ros_status"
+# Host ROS only (e.g. a laptop with ROS Humble installed): the host also sees container processes.
+if [[ -r /opt/ros/humble/setup.bash ]] && { ! $did || pgrep -f -- "$NAV" >/dev/null; }; then
+  echo "== host"
+  if pgrep -f -- "$NAV" >/dev/null || pgrep -f -- '--ros-args' >/dev/null; then
+    inside all || status=1
+  else
+    echo "nothing running on the host"
+  fi
 fi
-printf 'G1 navigation shutdown complete. Terminal output remains available.\n'
+((status == 0)) && echo "G1 navigation stopped. The windows stay open for their logs." \
+  || { echo "Something did not stop: see above." >&2; exit 1; }

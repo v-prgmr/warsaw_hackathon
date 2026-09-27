@@ -195,7 +195,9 @@ rclpy.init(); n = rclpy.create_node("g1_session_probe")
 end = time.time() + 4.0
 while time.time() < end:
     rclpy.spin_once(n, timeout_sec=0.2)
-print(n.count_publishers("/tf") + n.count_publishers("/map"))
+# the OAK-D driver (Orin) publishes its camera frames on /tf: not a robot TF/map owner
+tf = [i for i in n.get_publishers_info_by_topic("/tf") if not i.node_name.startswith("oak")]
+print(len(tf) + n.count_publishers("/map"))
 EOF' 2>/dev/null | tail -1) || tf_pubs=0
 if [[ ${tf_pubs:-0} -gt 0 ]]; then
   docker stop "$CONTAINER" >/dev/null; $SEARCH && docker stop "$SEARCH_CONTAINER" >/dev/null

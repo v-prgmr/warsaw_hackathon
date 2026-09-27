@@ -1,0 +1,18 @@
+# explore_lite (m-explore-ros2 + patches/m-explore-ros2-success.patch) on the real G1:
+# frontiers of the RTAB-Map /map, goals to Nav2 NavigateToPose (AGENTS.md §15).
+# Launch: ros2 launch g1_nav2 rtabmap_explore.launch.py (after rtabmap_nav_dry_run / _live).
+explore_node:
+  ros__parameters:
+    use_sim_time: false
+    robot_base_frame: robot_center     # g1_mapping's odom child frame (AGENTS.md §6)
+    costmap_topic: /map                # RTAB-Map 2D grid, transient-local (read by the patch)
+    costmap_updates_topic: /map_updates  # RTAB-Map publishes none; full /map updates only
+    return_to_init: false
+    visualize: true                    # /explore/frontiers (RViz MarkerArray)
+    planner_frequency: 0.2             # s^-1; the patch keeps the active goal between replans
+    progress_timeout: 60.0             # s without 5 cm of progress -> cancel + blacklist the goal
+    potential_scale: 3.0
+    orientation_scale: 0.0
+    gain_scale: 1.0
+    transform_tolerance: 0.5           # s; the laptop is NTP-synced to .161 (AGENTS.md §7)
+    min_frontier_size: 0.3             # m; 0.3 found frontiers on the stationary G1 (2026-09-26)
