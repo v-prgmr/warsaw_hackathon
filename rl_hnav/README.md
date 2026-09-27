@@ -534,7 +534,7 @@ bash scripts/setup_m_explore.sh                  # from the repository root
 Then either the whole stack with an explorer window (it waits for Enter):
 
 ```bash
-bash scripts/start_g1_navigation.sh --explore    # dry run; --live --explore walks the G1
+bash scripts/start_g1_explore_navigation.sh      # dry run; --live walks the G1
 ```
 
 or the explorer alone next to a running dry-run stack. Parameters:
@@ -547,7 +547,7 @@ ros2 launch g1_nav2 rtabmap_explore.launch.py    # check_rtabmap_plan first, the
 
 `preflight:=true` (default) starts the explorer only if `check_rtabmap_plan`
 passes. It refuses while `/cmd_vel` has endpoints, so a live run uses
-`preflight:=false` after the dry run passed (the script does this with `--live`).
+`preflight:=false` after the dry run passed (`start_g1_explore_navigation.sh --live` does this).
 Offline check (2026-09-27, isolated domain, fake RTAB-Map `/map` with one open
 side): the preflight gate kept the explorer off without a battery signal; with
 `preflight:=false` it found the frontiers, Nav2 planned to the open side and the

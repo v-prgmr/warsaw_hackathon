@@ -1,7 +1,7 @@
 """Frontier exploration (explore_lite) on the RTAB-Map /map of the real G1 (AGENTS.md §15).
 
 Start g1_sensors TF, g1_mapping, the /scan pipeline and rtabmap_nav_dry_run.launch.py (or
-rtabmap_nav_live.launch.py) first; scripts/start_g1_navigation.sh --explore does all of it.
+rtabmap_nav_live.launch.py) first; scripts/start_g1_explore_navigation.sh does all of it.
 explore_lite sends NavigateToPose goals as soon as it starts:
   - dry run: Nav2 plans and its velocities go to /g1_nav2_dry_run/cmd_vel, nothing moves.
   - live: the G1 WALKS to the frontiers. Only after the dry run and the AGENTS.md §19 / §25

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Companion to start_g1_navigation.sh. Order (AGENTS.md §19):
+# Companion to start_g1_navigation.sh and start_g1_explore_navigation.sh. Order (AGENTS.md §19):
 #   1. the Loco executor first: SIGINT to g1_loco_client (it calls StopMove) and cmd_vel_gateway
 #   2. then the frontier explorer, Nav2, the /scan bridge, the velocity monitor and the navigation
 #      RViz (SIGINT, TERM, KILL)

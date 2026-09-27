@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# Nav2 on the RTAB-Map map, goals from RViz ("Nav2 Goal"). No m-explore, no RL locomotion.
+# start_g1_navigation.sh + m-explore: Nav2 on the RTAB-Map map with the frontier explorer
+# (explore_lite, AGENTS.md §15) in its own window; RViz goals work too. No RL locomotion.
+# Setup once: bash scripts/setup_m_explore.sh. The explorer waits for Enter in its window.
 # Dry run by default: Nav2's velocities go to /g1_nav2_dry_run/cmd_vel and nothing moves.
-# --live adds the high-level Loco executor (cmd_vel_gateway + g1_loco_client): the robot WALKS.
+# --live adds the high-level Loco executor (cmd_vel_gateway + g1_loco_client): the robot WALKS
+# to every frontier. Safety zone (doors, stairs, people out of reach), remote e-stop in hand.
 # Gates before --live: g1_ws/NAV2_FIRST_STEP.md (G0-G3), g1_loco_cmdvel Stage 4, AGENTS.md §19/§25.
 set -euo pipefail
 
@@ -19,17 +22,18 @@ ORIN=192.168.123.164
 
 usage() {
   cat <<'HELP'
-Usage: bash scripts/start_g1_navigation.sh [options]
+Usage: bash scripts/start_g1_explore_navigation.sh [options]
 
-Opens one window each for the G1's direct RViz navigation on the RTAB-Map map:
+Opens one window each for the G1's frontier exploration on the RTAB-Map map:
   G1 1  robot TF (g1_sensors tf_chain)        G1 4  Nav2 (dry run, or --live)
   G1 2  map (g1_mapping, RTAB-Map)            G1 5  velocity monitor
   G1 3  /scan (humanoid_nav_bridge)           G1 6  RViz with the "Nav2 Goal" tool
   G1 7  checks shell (check_rtabmap_plan)
+  G1 8  frontier explorer (explore_lite; waits for Enter, then sends goals to Nav2)
   --live: also  G1 L1  Loco SDK client   G1 L2  cmd_vel_gateway   -> the robot WALKS
 
 If start_g1_session.sh is running (container g1-robot), TF and map come from it: only
-windows 3-7 open, inside that container. Otherwise its own container g1-nav runs everything.
+windows 3-8 open, inside that container. Otherwise its own container g1-nav runs everything.
 
   --live         enable the Loco executor; Nav2 publishes /cmd_vel. Asks you to type LIVE.
   --max-vx V     forward (and sideways) speed limit for Nav2 and the gateway
@@ -119,6 +123,23 @@ Checks (shell with ROS + rl_hnav sourced):
   ros2 topic echo /battery_state --field percentage
   ros2 topic hz /map                         the map grows while the robot surveys
 EOF'
+# The explorer sends goals as soon as it runs: it waits for Enter. The dry run checks the plan first;
+# check_rtabmap_plan refuses while /cmd_vel exists, so --live relies on the dry run's check.
+PREFLIGHT=true; $LIVE && PREFLIGHT=false
+if $LIVE; then
+  EXPLORE_MODE='LIVE: the G1 WALKS to every frontier it finds. Safety zone ready, remote e-stop in hand.'
+else
+  EXPLORE_MODE='Dry run: Nav2 plans and shows the velocities it would send (G1 5); nothing moves.'
+fi
+CMD_EXPLORE="cat <<EOF
+Frontier exploration (explore_lite on the RTAB-Map /map; goals -> Nav2 NavigateToPose).
+  $EXPLORE_MODE
+  Survey with the remote first: on a standing-only map there are no frontiers.
+  Pause:  ros2 topic pub --once /explore/resume std_msgs/msg/Bool '{data: false}'   (resume: true)
+  Stop:   Ctrl-C here (or bash scripts/stop_g1_navigation.sh)
+  RViz:   add a MarkerArray display on /explore/frontiers
+EOF
+read -r -p 'Press Enter to start exploring (Ctrl-C to skip): ' _ && ros2 launch g1_nav2 rtabmap_explore.launch.py preflight:=$PREFLIGHT"
 
 if $PRINT_ONLY; then
   if $ATTACH; then say "Runs inside $SESSION_CONTAINER (start_g1_session.sh already runs TF + map)"
@@ -134,6 +155,7 @@ if $PRINT_ONLY; then
   say "[G1 5 - velocity monitor]"; echo "$CMD_MON"
   $RVIZ && { say "[G1 6 - RViz goals]"; echo "$CMD_RVIZ"; }
   say "[G1 7 - checks]"; echo "ros2 run g1_nav2 check_rtabmap_plan"
+  say "[G1 8 - frontier explorer, after Enter]"; echo "ros2 launch g1_nav2 rtabmap_explore.launch.py preflight:=$PREFLIGHT"
   exit 0
 fi
 
@@ -238,6 +260,8 @@ if [[ $RUNNER == docker ]]; then
   ros_sh 'source /ws/rl_hnav/install/setup.bash && ros2 pkg prefix g1_nav2 >/dev/null' \
     || abort "g1_nav2 is not built in /ws/rl_hnav/install"
 fi
+ros_sh "source $WS/rl_hnav/install/setup.bash && ros2 pkg prefix explore_lite >/dev/null" \
+  || abort "explore_lite (m-explore) is not built. Once, with internet: bash scripts/setup_m_explore.sh$([[ $RUNNER == host ]] && echo ' --host')"
 
 say "4. Who already publishes on the robot network"
 probe=$(ros_sh 'python3 - <<EOF
@@ -309,6 +333,7 @@ fi
 open_window 'G1 5 - velocity monitor' "$CMD_MON"
 $RVIZ && open_window 'G1 6 - RViz goals' "$CMD_RVIZ"
 open_window 'G1 7 - checks' "$CMD_CHECKS"
+open_window "G1 8 - frontier explorer$($LIVE && echo ' (LIVE: the G1 walks)')" "$CMD_EXPLORE"
 
 $ATTACH || printf '\nMap database: %s\n' "$DB"
 if $LIVE; then
@@ -320,6 +345,7 @@ LIVE (max_vx $MAX_VX m/s, max_wz $MAX_WZ rad/s):
   3. Remote operator ready -> RViz "Nav2 Goal", short (0.5-1 m), on free floor.
 Emergency: the remote. Stop: bash scripts/stop_g1_navigation.sh (StopMove first, then the rest).
 EOF
+  echo '  Explorer: press Enter in "G1 8" only with the safety zone ready; it walks to each frontier.'
 else
   cat <<EOF
 
@@ -329,4 +355,5 @@ Dry run (nothing moves; velocities go to /g1_nav2_dry_run/cmd_vel):
   3. RViz "Nav2 Goal" 0.5-1 m ahead; "G1 5" shows the velocities it WOULD send.
 Stop: bash scripts/stop_g1_navigation.sh     Live, only after the gates: --live (see --help)
 EOF
+  echo '  Explorer: press Enter in "G1 8": preflight, then frontier goals Nav2 only plans.'
 fi

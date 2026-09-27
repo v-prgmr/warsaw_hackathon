@@ -6,7 +6,7 @@
 #      active goal, cancel + blacklist stalled goals), unless it is already applied
 #   3. build explore_lite_msgs + explore_lite (and g1_nav2) in a throwaway g1-humble container
 #      (isolated DDS domain; the robot is not touched), or with the host's ROS in --host mode
-# Then: bash scripts/start_g1_navigation.sh --explore
+# Then: bash scripts/start_g1_explore_navigation.sh
 set -euo pipefail
 
 ROOT=$(realpath "$(dirname "${BASH_SOURCE[0]}")/..")
@@ -60,4 +60,4 @@ else
     -e HOME=/tmp/home -e G1_SIM=1 -v "$ROOT":/ws g1-humble bash -c "cd /ws && $BUILD"
 fi
 echo
-echo "Done. Start it with: bash scripts/start_g1_navigation.sh --explore   (dry run first)"
+echo "Done. Start it with: bash scripts/start_g1_explore_navigation.sh   (dry run first)"
