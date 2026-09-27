@@ -1,5 +1,8 @@
 # AR glasses + G1: setup and running a session
 
+> **Whole session (camera, TF, map, glasses, RViz, object search):** [`../ROBOT_SESSION.md`](../ROBOT_SESSION.md),
+> `bash scripts/start_g1_session.sh`. This page covers the glasses in detail.
+
 Snap Spectacles (2024) show what the G1 knows in the real room: the robot, the LiDAR map, the
 Nav2 path and POIs. The glasses and the robot are aligned with one AprilTag on a wall that both
 see. Background: [`README.md`](README.md) (glasses side, Lens deployment),

@@ -5,9 +5,12 @@ where Unitree's bare-DDS services publish (g1_sensors README; AGENTS.md §5). So
 in its own domain (default 78) and this node, on the laptop, copies its topics into domain 0
 for tf_chain / tag_anchor / semantic_query. Messages are copied serialized (no decode). Images
 are decimated by their header stamp (the same stamp keeps RGB and aligned depth together).
+In domain 0 they are republished RELIABLE like the driver itself, so RViz's default QoS works
+and Best Effort subscribers (our nodes) match too.
 
-    ros2 run g1_sensors oak_domain_relay                  # 78 -> 0, images at <= 10 Hz
-    ros2 run g1_sensors oak_domain_relay --max-rate 15
+    ros2 run g1_sensors oak_domain_relay                  # 78 -> 0, images at <= 15 Hz
+    ros2 run g1_sensors oak_domain_relay --max-rate 0     # every frame
+    ros2 run g1_sensors oak_domain_relay --in-reliable    # receive RELIABLE from the Orin
 
 Orin side (then): ROS_DOMAIN_ID=78 ros2 launch depthai_ros_driver camera.launch.py
 Read-only towards the robot: it only republishes camera data.
@@ -27,6 +30,9 @@ IMAGES = ("/oak/rgb/image_raw", "/oak/stereo/image_raw")
 INFOS = ("/oak/rgb/camera_info", "/oak/stereo/camera_info")
 SENSOR = QoSProfile(depth=2, reliability=ReliabilityPolicy.BEST_EFFORT,
                     durability=DurabilityPolicy.VOLATILE, history=HistoryPolicy.KEEP_LAST)
+# what the depthai driver publishes (and RViz subscribes by default): RELIABLE, VOLATILE
+RELIABLE = QoSProfile(depth=2, reliability=ReliabilityPolicy.RELIABLE,
+                      durability=DurabilityPolicy.VOLATILE, history=HistoryPolicy.KEEP_LAST)
 LATCHED = QoSProfile(depth=100, reliability=ReliabilityPolicy.RELIABLE,
                      durability=DurabilityPolicy.TRANSIENT_LOCAL, history=HistoryPolicy.KEEP_LAST)
 
@@ -50,15 +56,17 @@ class Relay:
         self.max_rate = args.max_rate
         self.last_bucket = {}
         self.counts = {}
+        qos_in = RELIABLE if args.in_reliable else SENSOR
         for topic in IMAGES:
-            self.add(topic, Image, SENSOR, SENSOR, decimate=True)
+            self.add(topic, Image, qos_in, RELIABLE, decimate=True)
         for topic in INFOS:
-            self.add(topic, CameraInfo, SENSOR, SENSOR, decimate=True)
+            self.add(topic, CameraInfo, qos_in, RELIABLE, decimate=True)
         self.add("/tf_static", TFMessage, LATCHED, LATCHED, decimate=False)
         self.src.create_timer(10.0, self.report)
         self.src.get_logger().info(
             f"relaying OAK-D topics domain {args.from_domain} -> {args.to_domain} "
-            f"(images <= {self.max_rate} Hz)")
+            f"(images <= {self.max_rate} Hz; in {'reliable' if args.in_reliable else 'best effort'},"
+            f" out reliable)")
 
     def add(self, topic, mtype, qos_in, qos_out, decimate):
         pub = self.dst.create_publisher(mtype, topic, qos_out)
@@ -104,7 +112,10 @@ def main(argv=None):
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--from-domain", type=int, default=78)
     ap.add_argument("--to-domain", type=int, default=0)
-    ap.add_argument("--max-rate", type=float, default=10.0, help="images per second, 0 = all")
+    ap.add_argument("--max-rate", type=float, default=15.0, help="images per second, 0 = all")
+    ap.add_argument("--in-reliable", action="store_true",
+                    help="subscribe RELIABLE on the Orin side (retransmits lost pieces of big "
+                         "images; default best effort)")
     args, _ = ap.parse_known_args(argv)
     relay = Relay(args)
     try:

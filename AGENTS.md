@@ -1574,6 +1574,9 @@ multi-view fit of the real Spectacles poses is 3–7 px (17 px in the first seco
 3 px gate took 106 s; replaying the recording, 6 px commits after 29 s with 0.9° less yaw than
 the final estimate. `max_rms_px` is now 6. This most likely also blocked the robot run. Next: the
 robot again; replay the recording if it does not commit.
+**Session guide:** `ROBOT_SESSION.md`, `scripts/start_g1_session.sh` (OAK-D in domain 0,
+one robot container with screen access for RViz, the GPU search container) and
+`scripts/g1_search.sh <object>`.
 **Object search (2026-09-27):** typing "red cup" in the glasses searches the chest OAK-D with
 Grounding DINO + SAM2 (`semantic_query`, GPU container `g1-semantic`, `--search`) and marks the
 object with a 3D box + label; replies arrive via `/ar_glasses/reply`. On the robot the OAK-D
