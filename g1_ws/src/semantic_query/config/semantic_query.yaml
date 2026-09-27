@@ -1,0 +1,29 @@
+poi_node:
+  ros__parameters:
+    # --- OAK-D topics (depthai-ros defaults; VERIFY on hardware and update) ---
+    rgb_topic: /oak/rgb/image_raw
+    depth_topic: /oak/stereo/image_raw          # aligned-to-RGB depth
+    info_topic: /oak/rgb/camera_info
+    # --- frames ---
+    optical_frame: oak_rgb_camera_optical_frame  # depth/rgb optical frame (from g1_sensors TF)
+    map_frame: map
+    # --- geometry ---
+    depth_scale: 0.001        # depth raw units -> metres (16UC1 mm -> 0.001)
+    max_depth_m: 6.0
+    min_depth_m: 0.2
+    # --- detector ---
+    backend: grounding_dino_sam2   # or "mock"
+    allow_mock: true               # fall back to mock if the model import/load fails
+    device: cuda                   # cuda | cpu
+    box_threshold: 0.35
+    text_threshold: 0.25
+    min_confidence: 0.30
+    use_sam2: true
+    # model weights (cache offline on the GPU host; leave blank to use library defaults)
+    gdino_config: ""
+    gdino_weights: ""
+    sam2_config: ""
+    sam2_weights: ""
+    # --- sync ---
+    sync_slop_s: 0.10
+    sync_queue: 15
