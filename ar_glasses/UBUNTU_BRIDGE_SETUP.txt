@@ -128,7 +128,7 @@ B6. Glasses measure the tag
 B7. Checks (Terminal 4)
       ros2 run tf2_ros tf2_echo robot_center spectacles            # robot -> glasses, live
       ros2 topic echo /ar_glasses/status
-      ros2 run g1_ar_bridge publish_demo_pois                      # labelled marker + box in front of the robot
+      ros2 run g1_ar_bridge publish_demo_pois                      # demo scene: table, green box, red bottle
     Any node can show things in the glasses: visualization_msgs/MarkerArray on /ar_glasses/markers (frame map).
 
 B8. End the session (AGENTS.md section 19)

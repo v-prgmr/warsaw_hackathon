@@ -217,7 +217,8 @@ ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=0.16 camera:=oak 
 2. Glasses: Dimensional OS → the laptop's **Wi-Fi** IP → Registration → **AprilTag** → look at
    the tag, step sideways. The robot box appears on the real robot.
 3. POIs: anything published as `visualization_msgs/MarkerArray` on `/ar_glasses/markers` (in
-   `map`) shows up; `ros2 run g1_ar_bridge publish_demo_pois` for a first check.
+   `map`) shows up; `demo_pois:=true` (or `ros2 run g1_ar_bridge publish_demo_pois`) draws the
+   home test's demo scene (virtual table, green box, red bottle) for a first check.
 
 **Never** run the upstream Dimensional OS stack (`launcher/scripts/start.sh`) against the real
 G1 next to ours: it is a second robot stack with its own map and it can walk the robot
