@@ -144,7 +144,7 @@ Ctrl-C the OAK-D driver on the Orin. Never `kill -9` a `ros2 launch` (AGENTS.md 
 | AR 3 stays "searching" | the robot camera does not see the tag: closer, facing it, light |
 | Registration never finishes | read the `waiting for:` line in AR 3. The glasses hide their text above 80 %; the bridge now keeps it below until it commits. Keep `bags/ar_registration/` and replay it: `python3 -m g1_ar_bridge.replay_registration bags/ar_registration` (in the container) |
 | "disagree on 'up'" | the robot camera's TF is wrong: check the OAK-D mount calibration |
-| Robot box offset from the robot | wrong `--tag-size`, the tag moved, or the (taped) OAK-D mount shifted: re-measure the calibration (`g1_sensors` README, OAK-D ↔ LiDAR) |
+| Robot box offset from the robot | wrong `--tag-size`, the tag moved, or the OAK-D mount was moved: re-measure the calibration (`g1_sensors` README, OAK-D ↔ LiDAR) |
 | Dimensional OS missing from Drafts | redeploy from Lens Studio ([`README.md`](README.md) Part 1) |
 
 ## 4. Search for objects ("red cup") and mark them
@@ -200,5 +200,5 @@ box with a heading line and a "Leo Rover" label (details and status:
 - **Reuse a map and the robot's tag measurement:** `g1_mapping ... localization:=true
   database_path:=/ws/bags/maps/room.db` + the bridge's `anchor_file` / `load_saved`
   (`config/ar_bridge.yaml`); only valid while the tag and the camera mount do not move.
-- The OAK-D mount is calibrated against the LiDAR (`g1_sensors/config/oakd_livox_taped_20260927.yaml`,
-  taped mount): if the camera is bumped, recalibrate before trusting the overlay.
+- The OAK-D mount is calibrated against the LiDAR (`g1_sensors/config/oakd_livox_rigid_20260927.yaml`,
+  rigid mount): if the mount is changed, recalibrate before trusting the overlay.

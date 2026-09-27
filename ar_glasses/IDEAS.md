@@ -57,7 +57,7 @@ The design notes below stay as the reference.
 - Camera: chest OAK-D on the Orin: `/oak/rgb/image_raw`, `/oak/rgb/camera_info`,
   `/oak/stereo/image_raw` (RGB-aligned depth, 1280×720, `16UC1` mm), frame
   `oak_rgb_camera_optical_frame`; TF `map <- oak_rgb_camera_optical_frame` from `g1_sensors` +
-  `g1_mapping` (mount: `g1_sensors/config/oakd_livox_taped_20260927.yaml`, ~3 cm).
+  `g1_mapping` (mount: `g1_sensors/config/oakd_livox_rigid_20260927.yaml`, rigid, ~3 cm).
 - The look: the demo scene (`g1_ar_bridge/demo_pois_node.py`) is the template.
 
 **To build: `semantic_query`** (AGENTS.md §12 pipeline)
@@ -166,7 +166,7 @@ zone and the robot's status text, all in the right place, without the Lens slowi
 **To build**
 - **TF axes:** a node that draws chosen frames (e.g. `robot_center`, `livox_frame`,
   `oak_rgb_camera_optical_frame`, `ar_tag_0`) as red/green/blue LINE_LIST triads (0.2 m),
-  `ns: "tf_axes"`. If the OAK-D axes do not sit on the real camera, the taped mount has shifted
+  `ns: "tf_axes"`. If the OAK-D axes do not sit on the real camera, the OAK-D mount has moved
   (recalibrate: `g1_sensors` README, OAK-D ↔ LiDAR).
 - **Camera frustum:** from `/oak/rgb/camera_info` + TF, draw the view pyramid to 2 m; objects the
   robot "sees" should be inside it.

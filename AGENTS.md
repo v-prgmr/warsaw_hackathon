@@ -315,7 +315,7 @@ The head RealSense points at the floor, so a **chest-mounted OAK-D** is the sema
 - Publish RGB + depth **aligned to RGB at the same resolution** + CameraInfo, like the RealSense profile.
 - If the OAK-D is plugged into the laptop rather than the Orin, its stamps come from a different clock than the robot's streams (§7 Clock).
 - Mounting follows §25.2: ≤ 1 kg of extra hardware in total, on the torso or head, velcro / zip ties / manufacturer holes, no traces on removal, and it must not cover the LiDAR, cameras, vents, or indicators.
-- Its extrinsic is the static transform `camera_link -> oak-d-base-frame` in `g1_sensors` (§10.1): **provisional, taped mount**: joint ICP of the OAK depth against the MID-360 on two stationary room views (`g1_sensors/config/oakd_livox_taped_20260927.yaml`, 2026-09-27; median depth-ray residual ~3 cm on the fitted scenes, **no independent holdout**). Recheck it whenever the tape shifts. Earlier fits are archived (`oakd_livox_provisional.yaml` for the previous mount, `oakd_realsense_provisional.yaml` / `OAKD_REALSENSE_TF.md` for the ChArUco fit). Expect centimetre-level POI error. Expected topics `/oak/rgb/image_raw`, `/oak/rgb/camera_info`, `/oak/stereo/image_raw` (RGB-aligned depth); the Foxy driver on the Orin **segfaults at launch on the robot's DDS domain 0** (reproduced 2026-09-27; Unitree's bare-DDS traffic, cf. §5). Run it in **domain 78** and copy its topics into domain 0 on the laptop with `ros2 run g1_sensors oak_domain_relay` (serialized, images ≤ 10 Hz; `scripts/start_ar_glasses.sh --orin` does both). If the robot is moved, the driver can stall (topics advertised, no data): restart it.
+- Its extrinsic is the static transform `camera_link -> oak-d-base-frame` in `g1_sensors` (§10.1): **rigid mount, frozen** (2026-09-27): joint ICP of the OAK depth against the MID-360 on two stationary scenes, a third held out (`g1_sensors/config/oakd_livox_rigid_20260927.yaml`). It replaced the duct-tape mount (archived `oakd_livox_taped_20260927.yaml`; earlier fits: `oakd_livox_provisional.yaml`, `oakd_realsense_provisional.yaml` / `OAKD_REALSENSE_TF.md`). Refit if the mount is changed. Expected topics `/oak/rgb/image_raw`, `/oak/rgb/camera_info`, `/oak/stereo/image_raw` (RGB-aligned depth); the Foxy driver on the Orin **segfaults at launch on the robot's DDS domain 0** (reproduced 2026-09-27; Unitree's bare-DDS traffic, cf. §5). Run it in **domain 78** and copy its topics into domain 0 on the laptop with `ros2 run g1_sensors oak_domain_relay` (serialized, images ≤ 10 Hz; `scripts/start_ar_glasses.sh --orin` does both). If the robot is moved, the driver can stall (topics advertised, no data): restart it.
 - RGB keyframes for POI queries are captured **while the robot is standing still** (settled); walking shakes the chest camera too.
 
 ## RealSense (head)
@@ -526,7 +526,7 @@ Frame-convention glue that is not in the URDF must be an explicit, documented st
 - `d435_link -> camera_link`: identity, the realsense-ros root frame; unverified until the RealSense runs
 - `robot_center -> pelvis`: identity. Pelvis height 0.77 m (LiDAR) / 0.79 m (URDF feet) vs `/dog_odom` z 0.74 m
 - `imu_in_pelvis -> dog_imu_link`: identity. The pelvis IMU's gravity is ~1.5° off the torso-side sensors through the waist joints, constant over three waist poses (standing and hanging): a fixed offset (waist encoder zero or IMU mounting; unresolved). With `/dog_imu_raw` as the gravity reference the map tilts by that much; `g1_mapping imu_source:=livox` avoids it
-- `camera_link -> oak-d-base-frame`: taped-mount provisional OAK-depth/MID-360 ICP fit (`oakd_livox_taped_20260927.yaml`); refit when the mount shifts, replacing only this link
+- `camera_link -> oak-d-base-frame`: rigid-mount OAK-depth/MID-360 ICP fit, third scene held out (`oakd_livox_rigid_20260927.yaml`); refit when the mount changes, replacing only this link
 
 Never pass XYZ coordinates without a `frame_id`.
 
@@ -1343,7 +1343,7 @@ Consequences:
 ### Day-1 task assignment (updated critical path A→B→C→D; semantic work in parallel)
 | Owner | Package(s) | Milestone | Offline-capable |
 |-------|-----------|-----------|-----------------|
-| A | `g1_sensors`: `/lowstate` → `/joint_states` bridge, `robot_state_publisher` (G1 URDF), static glue frames incl. the OAK-D mount (built; OAK-D mount provisional, taped mount, OAK/LiDAR ICP: `oakd_livox_taped_20260927.yaml`) | M0 | yes from `/lf/lowstate` bags |
+| A | `g1_sensors`: `/lowstate` → `/joint_states` bridge, `robot_state_publisher` (G1 URDF), static glue frames incl. the OAK-D mount (built; OAK-D rigid mount, OAK/LiDAR ICP: `oakd_livox_rigid_20260927.yaml`) | M0 | yes from `/lf/lowstate` bags |
 | B | `g1_recorder` + existing `keyframe_manager` | M0 | yes after canonical bag |
 | C | `g1_mapping` (RTAB-Map LiDAR-inertial) bringup + tuning | M1→M3 | yes (from bag) |
 | D | URDF TF chain + physical-measurement validation + `scene_server` canonical outputs | M2→M3 | yes (from bag/map DB) |

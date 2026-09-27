@@ -10,6 +10,7 @@ TAG_SIZE=0.16
 OAK_DOMAIN=0
 ORIN=true
 SEARCH=true
+SKELETON=true
 RVIZ=true
 GLASSES=true
 DEMO=false
@@ -37,6 +38,7 @@ Then ask for objects from any terminal:  bash scripts/g1_search.sh red cup
   --no-orin         do not open the Orin window (the OAK-D driver already runs)
   --no-search       no object search       --no-rviz     no RViz
   --no-glasses      no AR glasses bridge / tag anchor
+  --no-skeleton     do not draw the robot's skeleton (links from URDF + TF) in the glasses
   --demo            draw the demo scene (virtual table + green box) for the glasses
   --build           rebuild the packages first (done automatically when sources are newer)
   --nic NAME        wired interface to the G1 (default enp2s0)
@@ -53,6 +55,7 @@ while (($#)); do
     --no-search) SEARCH=false; shift ;;
     --no-rviz) RVIZ=false; shift ;;
     --no-glasses) GLASSES=false; shift ;;
+    --no-skeleton) SKELETON=false; shift ;;
     --demo) DEMO=true; shift ;;
     --build) BUILD=true; shift ;;
     --nic) [[ $# -ge 2 ]] || { usage; exit 2; }; NIC=$2; shift 2 ;;
@@ -81,7 +84,7 @@ CMD_ORIN="ssh -t ${ORIN_HOST} $(printf %q "bash -lc $(printf %q "$ORIN_REMOTE")"
 CMD_RELAY="ros2 run g1_sensors oak_domain_relay --from-domain ${OAK_DOMAIN} --to-domain 0 --in-reliable"
 CMD_TF='ros2 launch g1_sensors tf_chain.launch.py'
 CMD_MAP='ros2 launch g1_mapping mapping.launch.py static_tf:=false'
-CMD_BRIDGE="ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=${TAG_SIZE} camera:=oak demo_pois:=${DEMO}"
+CMD_BRIDGE="ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=${TAG_SIZE} camera:=oak demo_pois:=${DEMO} skeleton:=${SKELETON}"
 CMD_RVIZ="rviz2 -d ${RVIZ_CONFIG}"
 CMD_SEARCH='ros2 launch semantic_query semantic_query.launch.py'
 CMD_CHECKS='cat <<EOF

@@ -51,7 +51,7 @@ a `git pull`), starts the two containers and opens these windows:
 | G1 5 | a shell in the robot container, for checks | – |
 | G1 6 | `ros2 launch semantic_query semantic_query.launch.py` (GPU container) | wait for `poi_node up (… device=cuda)` |
 
-Options: `--no-search`, `--no-rviz`, `--no-glasses`, `--no-orin` (driver already running),
+Options: `--no-search`, `--no-rviz`, `--no-glasses`, `--no-skeleton`, `--no-orin` (driver already running),
 `--demo` (virtual table + green box for the glasses), `--tag-size 0.16`, `--oak-domain 78` (see §6).
 Stop: `bash scripts/stop_g1_session.sh`, then Ctrl-C in the Orin window.
 
@@ -149,6 +149,7 @@ Once registered on the tag (Dimensional OS → Registration → AprilTag):
 | Thing | What |
 |---|---|
 | **the robot** | its marker follows the G1; a pin above it: **"Unitree G1 · 70%"** (battery) |
+| **the robot's skeleton** | its links from the URDF + TF as a stick figure that moves with the joints (`ar_skeleton`; `--no-skeleton` to hide) |
 | **the wall tag** | a pin **"AprilTag 0"** |
 | **lines on the floor** | the room's walls from the 2D map, traced on the floor (updated as the map grows) |
 | **found objects** | a green 3D box + a label pin ("red cup (0.71)"); "searching: red cup" above the robot while it looks |

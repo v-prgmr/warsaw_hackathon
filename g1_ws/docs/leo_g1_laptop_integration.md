@@ -77,7 +77,7 @@ In the G1 graph itself, `g1_mapping` remains the **only** owner of `map -> odom`
 
 ## 3. Anchor the stationary tag in the G1 map
 
-1. Run `g1_sensors tf_chain` and `g1_mapping` on the live G1 streams (or in isolated replay). Confirm the complete G1 camera TF chain and RTAB-Map map-frame pose. G1 chest OAK-D (verified 2026-09-26/27): `/oak/rgb/image_raw`, `/oak/rgb/camera_info`, `/oak/stereo/image_raw`, frame `oak_rgb_camera_optical_frame`; mount `camera_link -> oak-d-base-frame` from `g1_sensors/config/oakd_livox_taped_20260927.yaml`. Do not reuse Leo camera names.
+1. Run `g1_sensors tf_chain` and `g1_mapping` on the live G1 streams (or in isolated replay). Confirm the complete G1 camera TF chain and RTAB-Map map-frame pose. G1 chest OAK-D (verified 2026-09-26/27): `/oak/rgb/image_raw`, `/oak/rgb/camera_info`, `/oak/stereo/image_raw`, frame `oak_rgb_camera_optical_frame`; mount `camera_link -> oak-d-base-frame` from `g1_sensors/config/oakd_livox_rigid_20260927.yaml` (rigid mount). Do not reuse Leo camera names.
 2. Detect the **same `tag36h11` ID 0, size 0.160 m** from G1 RGB and CameraInfo while G1 stands still and the tag is fixed. Give this G1 *observed-tag* frame a different name from Leo's `leo_tag0`.
 3. At the detection timestamp compute `T_g1_map_tag = T_g1_map_g1_camera × T_g1_camera_tag`. Validate repeated observations and freeze/publish a single `g1_map -> shared_tag0` anchor for that stationary tag. A tag moved after anchoring invalidates the anchor.
 
