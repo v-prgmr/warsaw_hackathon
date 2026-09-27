@@ -52,6 +52,7 @@ the chest OAK-D, put it at chest height.
 | Path | What |
 |---|---|
 | `SETUP.md` | **start here for a robot session**: one-time setup, `scripts/start_ar_glasses.sh`, troubleshooting |
+| `IDEAS.md` | what to build next (voice query → box on the object, goals from the glasses → Nav2, robot intent views, calibration views), with interfaces, safety rules and acceptance criteria |
 | `../g1_ws/src/g1_ar_bridge/` | **the bridge** (ROS 2 package + `sim_main` without ROS) and its tests |
 | `UBUNTU_BRIDGE_SETUP.txt` | hand-out for the robot laptop: network, container, launch, checks |
 | `lens_patches/g1-wall-tag-texts.patch` | optional: Lens texts for our setup ("robot laptop" instead of "Mac", wall tag) |
