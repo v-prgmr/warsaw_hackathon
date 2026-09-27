@@ -18,6 +18,9 @@ from semantic_query.commands import parse_command
     ("stop", ("stop", None)),
     ("Cancel", ("stop", None)),
     ("clear", ("clear", None)),
+    ("help", ("help", None)),
+    ("What can you do?", ("help", None)),
+    ("never mind", ("stop", None)),
     ("", (None, None)),
     ("find", ("search", "find")),
 ])

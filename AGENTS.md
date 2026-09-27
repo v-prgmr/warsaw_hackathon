@@ -263,6 +263,7 @@ The robot only publishes raw sensor streams. Everything else comes from nodes **
 | frontier goals | `explore_lite` (m-explore) |
 | `map -> ar_tag_<id>` (wall AprilTag) | `g1_ar_bridge` `tag_anchor` (robot camera, robot standing still; §27) |
 | `map -> ar_world`, `ar_world -> spectacles`, `/ar_glasses/*` | `g1_ar_bridge` `ar_bridge` (§27) |
+| markers `ns: floor_outline` / `robot_label` / `tag_label` (room walls on the floor, robot and tag pins) | `g1_ar_bridge` `scene_markers` (§27) |
 | `/oak/*` in domain 0 (OAK-D images, CameraInfo, its `/tf_static`) | `g1_sensors` `oak_domain_relay` (from the Orin's driver in domain 78; §7) |
 | `/semantic_query/poi`, `/semantic_query/image`, markers `ns: semantic_query` / `semantic_status`, replies on `/ar_glasses/reply` | `semantic_query` `poi_node` (object search, §12; GPU container `g1-semantic`) |
 | `map -> leo_odom -> leo_base` (Leo Rover in the G1 map), `/leo_in_g1/status`, markers `ns: leo` | `g1_ar_bridge` `leo_in_map` (from `leo_relay` on Leo: its tag sightings + odometry; `g1_ws/docs/leo_g1_laptop_integration.md`) |
@@ -1574,6 +1575,9 @@ multi-view fit of the real Spectacles poses is 3–7 px (17 px in the first seco
 3 px gate took 106 s; replaying the recording, 6 px commits after 29 s with 0.9° less yaw than
 the final estimate. `max_rms_px` is now 6. This most likely also blocked the robot run. Next: the
 robot again; replay the recording if it does not commit.
+**Glasses input is voice** (Lens Agent mode, wake word "robot"; "stop" is the Lens's disabled
+e-stop, so "cancel" stops a search). `scene_markers` adds the room outline on the floor and
+robot/tag pins; a marker DELETEALL now removes only its own `ns`.
 **Session guide:** `ROBOT_SESSION.md`, `scripts/start_g1_session.sh` (OAK-D in domain 0,
 one robot container with screen access for RViz, the GPU search container) and
 `scripts/g1_search.sh <object>`.

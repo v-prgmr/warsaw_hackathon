@@ -131,8 +131,9 @@ python3 -m g1_ar_bridge.replay_registration <dir> --overlays /tmp/ov      # anno
 | `map -> ar_world` | static TF | `ar_bridge` | after each registration; the Spectacles' world (Y up) |
 | `ar_world -> spectacles` | TF, ~2 Hz | `ar_bridge` | glasses, x forward / y left / z up |
 | `/ar_glasses/hmd_pose` | PoseStamped (`map`) | `ar_bridge` | same pose as `spectacles` |
-| `/ar_glasses/markers` | MarkerArray in | any node | POIs / boxes for the glasses: TEXT, SPHERE → labelled marker; CUBE → 3D box (+ `text`); LINE_STRIP / LINE_LIST → lines; DELETE / DELETEALL |
+| `/ar_glasses/markers` | MarkerArray in | any node | POIs / boxes for the glasses: TEXT, SPHERE → labelled marker (pin); CUBE → 3D box (+ `text` → label pin on top); LINE_STRIP / LINE_LIST → lines; DELETE; DELETEALL removes only that marker's `ns` (all when `ns` is empty) |
 | `/ar_glasses/user_command` | String out | `ar_bridge` | voice / typed commands from the glasses |
+| `/ar_glasses/markers` ns `floor_outline`, `robot_label`, `tag_label` | MarkerArray out | `scene_markers` (`scene_markers:=true`, default) | the room's walls from `/map` as lines on the floor; "Unitree G1 · 70%" pin above the robot; "AprilTag 0" pin on the tag |
 | `/ar_glasses/reply` | String in | any node (e.g. `semantic_query`) | text shown in the glasses' assistant panel ("Found red cup …"), even before registration |
 | `/ar_glasses/status`, `/ar_glasses/anchor_status` | String (JSON) | both nodes | registration and anchor state |
 | `/g1_mapping/cloud_map_3d`, `/plan` | in | g1_mapping (`map_assembler`), Nav2 | 3D map cloud (voxelised; LiDAR *full*: only the part within `lidar_view_cone_deg` of where the glasses look, ≤ 1500 pts per frame), path |

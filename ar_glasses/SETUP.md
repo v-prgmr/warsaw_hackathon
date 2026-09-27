@@ -157,8 +157,10 @@ bash scripts/start_ar_glasses.sh --tag-size 0.16 --orin --search
 ```
 1. Wait until window AR 7 says `poi_node up (…, device=cuda)` (the first start downloads the
    models, ~1 GB, into `bags/hf_cache`).
-2. In the glasses' text box type **`red cup`** (or "search for a red cup", "where is my bottle?").
-   The glasses answer "Searching for red cup…", and "searching: red cup" floats above the robot.
+2. In the glasses: menu → mode **Agent**, then say **"Robot, find the red cup"** (wake word
+   "robot"; for 30 s after that no wake word is needed; "cancel", "clear", "help"; never "stop",
+   which is the Lens's disabled e-stop). The glasses answer "Searching for red cup…", and
+   "searching: red cup" floats above the robot. Details: `../ROBOT_SESSION.md` §4.
 3. The robot checks new chest-camera frames for up to 20 s (~1 s per frame on an RTX GPU). Turn
    it towards the object. When found: a **green 3D box with the label** on the real object and
    "Found red cup (0.71), 1.8 m from the robot. Box 8 x 8 x 11 cm." Otherwise "No red cup found".

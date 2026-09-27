@@ -47,7 +47,7 @@ a `git pull`), starts the two containers and opens these windows:
 | G1 1 | `ros2 launch g1_sensors tf_chain.launch.py` | – |
 | G1 2 | `ros2 launch g1_mapping mapping.launch.py static_tf:=false` | – |
 | G1 3 | `ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=0.16 camera:=oak` | watch for `anchored map -> ar_tag_0` |
-| G1 4 | `rviz2 -d …/g1_session.rviz` | look (§5) |
+| G1 4 | `rviz2 -d …/g1_session.rviz` | look (§6) |
 | G1 5 | a shell in the robot container, for checks | – |
 | G1 6 | `ros2 launch semantic_query semantic_query.launch.py` (GPU container) | wait for `poi_node up (… device=cuda)` |
 
@@ -121,13 +121,44 @@ ros2 topic pub --once /semantic_query/query std_msgs/msg/String "{data: 'red cup
 ros2 topic echo /ar_glasses/reply          # answers
 ros2 topic echo /semantic_query/poi        # the found object: label, xyz in map, box, confidence
 ```
-From the **AR glasses**: type or say "red cup" in Dimensional OS's text box. The answer appears in the
-glasses, and the green 3D box stands on the real object.
+From the **AR glasses, by voice** (the glasses have no keyboard):
+1. Open the menu (look at your left palm) and switch the mode from **Manual** to **Agent**.
+2. Say the wake word **"robot"** and then the request, in one go: **"Robot, find the red cup."**
+   Everything after "robot" goes to the search. For the next 30 s you can talk without the wake
+   word: "where is my bottle", "clear".
+3. The answer appears in the glasses' panel ("Searching for red cup…", "Found red cup (0.71)…"), and
+   the object gets a **green 3D box with a label pin** ("red cup (0.71)") on top.
+
+| Say | Does |
+|---|---|
+| "Robot, find the red cup" / "Robot, where is my bottle" | search (20 s) |
+| "cancel" / "never mind" | stop the search |
+| "clear" | remove the boxes |
+| "help" | the glasses list what you can say |
+
+Do **not** say "stop": any phrase with "stop" is the Lens's **emergency stop**, which is switched off
+for the glasses (the robot remote is the e-stop) and never reaches the search. Use "cancel".
 
 The search tries new camera frames for up to 20 s (~1 s per frame on the GPU): put the object
 0.5–3 m in front of the G1's chest camera, or turn the robot towards it while it searches.
 
-## 5. RViz
+## 5. What the glasses show
+
+Once registered on the tag (Dimensional OS → Registration → AprilTag):
+
+| Thing | What |
+|---|---|
+| **the robot** | its marker follows the G1; a pin above it: **"Unitree G1 · 70%"** (battery) |
+| **the wall tag** | a pin **"AprilTag 0"** |
+| **lines on the floor** | the room's walls from the 2D map, traced on the floor (updated as the map grows) |
+| **found objects** | a green 3D box + a label pin ("red cup (0.71)"); "searching: red cup" above the robot while it looks |
+| **3D LiDAR map** | wrist menu → LiDAR **full**: up to 1500 points, only where you look (a Lens limit) |
+| robot bounding box | wrist menu → **Debug Mode** (the Lens has no G1 3D model) |
+
+Everything comes from `/ar_glasses/markers` (labels, pins, boxes, lines; `g1_ar_bridge` README), so
+RViz shows the same.
+
+## 6. RViz
 
 `g1_session.rviz` (Fixed Frame `map`) already shows:
 
@@ -143,7 +174,7 @@ Adding displays by hand: a display shows nothing when its QoS does not match the
 images from the driver are Reliable (RViz's default works); the map clouds are latched (set
 **Durability Policy: Transient Local** if they stay empty).
 
-## 6. When something does not work
+## 7. When something does not work
 
 | Symptom | Fix |
 |---|---|
@@ -151,6 +182,7 @@ images from the driver are Reliable (RViz's default works); the map clouds are l
 | Camera slow / laggy | the driver says `USB SPEED: HIGH`: use a USB 3 port (blue) and a USB 3 cable (`SUPER`). With the relay: `--in-reliable` (Best Effort drops whole frames) |
 | Camera topics listed but no images | the driver stalled (e.g. after moving the robot or the cable): Ctrl-C in G1 0 and start it again |
 | G1 3 stays `searching` | the tag is not readable in the robot camera: glare/sun on it, cut off at the image edge, or > 3 m away. Tag at chest height, printed side to the room, G1 1–1.5 m in front |
+| Voice does nothing | Agent mode on (menu)? Start with "robot, …"; the Lens shows what it heard. "stop" never reaches the search: say "cancel" |
 | `g1_search.sh`: "The object search is not running" | wait for `poi_node up` in G1 6 (the first start downloads the models) |
 | Search finds wrong things | raise `min_confidence` in `g1_ws/src/semantic_query/config/semantic_query.yaml` |
 | "someone already publishes /tf or /map" | another laptop runs the robot stack: only one may (AGENTS.md §6) |

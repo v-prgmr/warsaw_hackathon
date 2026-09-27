@@ -30,7 +30,7 @@ query ("red cup", "search for a red cup", "where is my bottle?")
 # with the robot and the glasses (GPU container g1-search, image g1-semantic):
 docker build -t g1-semantic -f docker/Dockerfile.semantic .     # once, with internet
 bash scripts/start_ar_glasses.sh --tag-size 0.16 --orin --search
-# then type "red cup" in the glasses
+# then, in the glasses (menu -> Agent mode), say: "Robot, find the red cup"
 
 # by hand, in a g1-semantic container (docker run --gpus all ... g1-semantic):
 ros2 launch semantic_query semantic_query.launch.py

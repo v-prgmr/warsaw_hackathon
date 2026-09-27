@@ -164,6 +164,10 @@ class PoiNode(Node):
                 arr.markers.append(m)
             self.marker_pub.publish(arr)
             self.reply("Cleared the found objects.")
+        elif action == "help":
+            self.reply('Say "robot, find the red cup" (or "where is my bottle"). "Cancel" stops '
+                       'a search, "clear" removes the boxes. The robot looks for 20 s: turn it '
+                       'towards the object.')
         elif action == "search":
             self.search = {"query": what, "started": time.monotonic(), "attempts": 0,
                            "used_seq": self.frame_seq, "best": None}
