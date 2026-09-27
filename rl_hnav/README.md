@@ -523,15 +523,37 @@ initial live test a goal 0.65 m ahead was unknown and Nav2 issued a dry-run
 recovery spin rather than a path-following command. Build a map by surveying
 with the vendor remote before expecting a planning or frontier-navigation test.
 For a **command-only** frontier test, after confirming `/cmd_vel` has zero
-publishers and subscribers, start the explorer with the real G1 frames:
+publishers and subscribers, start the explorer with the real G1 frames.
+Setup once (clones m-explore at the `exploration.repos` pin, applies the patch,
+builds in a throwaway `g1-humble` container):
 
 ```bash
-ros2 run explore_lite explore --ros-args \
-  -p use_sim_time:=false -p robot_base_frame:=robot_center \
-  -p costmap_topic:=/map -p costmap_updates_topic:=/map_updates \
-  -p progress_timeout:=60.0 -p min_frontier_size:=0.3 \
-  -p return_to_init:=false
+bash scripts/setup_m_explore.sh                  # from the repository root
 ```
+
+Then either the whole stack with an explorer window (it waits for Enter):
+
+```bash
+bash scripts/start_g1_navigation.sh --explore    # dry run; --live --explore walks the G1
+```
+
+or the explorer alone next to a running dry-run stack. Parameters:
+`g1_nav2/params/explore_g1_rtabmap.yaml` (`robot_center`, `/map`,
+`min_frontier_size` 0.3 m, `progress_timeout` 60 s, `/explore/frontiers`):
+
+```bash
+ros2 launch g1_nav2 rtabmap_explore.launch.py    # check_rtabmap_plan first, then explore
+```
+
+`preflight:=true` (default) starts the explorer only if `check_rtabmap_plan`
+passes. It refuses while `/cmd_vel` has endpoints, so a live run uses
+`preflight:=false` after the dry run passed (the script does this with `--live`).
+Offline check (2026-09-27, isolated domain, fake RTAB-Map `/map` with one open
+side): the preflight gate kept the explorer off without a battery signal; with
+`preflight:=false` it found the frontiers, Nav2 planned to the open side and the
+dry-run smoother output moved, with `/cmd_vel` unpublished.
+Pause / resume: `ros2 topic pub --once /explore/resume std_msgs/msg/Bool '{data: false}'`
+(`true`). `scripts/stop_g1_navigation.sh` also stops the explorer.
 
 On a harness-supported stationary G1, the explorer found a frontier, Nav2
 accepted the goal, and then correctly reported no physical progress. Keep

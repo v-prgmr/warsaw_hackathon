@@ -785,6 +785,7 @@ Capture after the robot has stopped / settled.
 - `ros2 launch g1_nav2 rtabmap_nav_live.launch.py`: the same nodes and parameters, but the smoother publishes `/cmd_vel` (its only publisher). Limits `max_vx` ≤ 0.10 m/s and `max_wz` ≤ 0.20 rad/s (the `cmd_vel_gateway` clamps) apply to the controller, smoother and spin recovery; nothing reverses (no BackUp). The controller is Regulated Pure Pursuit, because DWB never turned toward a goal behind the robot at these limits. Only after Stage 4 and the §19 gates.
 - `ros2 run g1_nav2 check_rtabmap_plan`: a read-only preflight. It checks TF, `/scan`, costmaps and fresh `/battery_state`, then calls `ComputePathToPose` only. A standing-only map reports `NOT READY`: survey with the vendor remote first.
 - explore_lite, command-only: on a harness-supported stationary G1 it found a frontier and Nav2 accepted the goal (2026-09-26), with the Loco client off. The local m-explore patch keeps the active goal while SLAM updates; `progress_timeout` is 60 s.
+- explore_lite on the robot (2026-09-27): `bash scripts/setup_m_explore.sh` once (pinned clone + patch + build), then `bash scripts/start_g1_navigation.sh --explore` (dry run; `--live --explore` walks the G1). Launch `g1_nav2 rtabmap_explore.launch.py`, params `explore_g1_rtabmap.yaml`; the explorer starts only after `check_rtabmap_plan` passes (`preflight:=false` in live mode, where the check refuses a live `/cmd_vel`).
 
 V1 environment assumption:
 

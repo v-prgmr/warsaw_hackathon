@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Companion to start_g1_navigation.sh. Order (AGENTS.md §19):
 #   1. the Loco executor first: SIGINT to g1_loco_client (it calls StopMove) and cmd_vel_gateway
-#   2. then Nav2, the /scan bridge, the velocity monitor and the navigation RViz (SIGINT, TERM, KILL)
+#   2. then the frontier explorer, Nav2, the /scan bridge, the velocity monitor and the navigation
+#      RViz (SIGINT, TERM, KILL)
 #   3. its own container g1-nav: everything else there (TF, map: RTAB-Map saves its database), then
 #      the container. Joined to start_g1_session (g1-robot): only the navigation, the session stays.
 # Never kill -9 a launch first: its nodes are orphaned and keep publishing onto the robot's network.
@@ -13,7 +14,7 @@ SESSION_CONTAINER=g1-robot
 # Anchored on the process's own argv[0], so the windows' wrapper shells (whose arguments contain
 # the same command text) and this script are never matched.
 EXECUTOR='^[^ ]*/g1_loco_client( |$)|^[^ ]*/cmd_vel_gateway( |$)|^[^ ]*python3 [^ ]*/ros2 run g1_loco_cmdvel '
-NAV="$EXECUTOR"'|^[^ ]*python3 [^ ]*/ros2 (launch (g1_nav2|humanoid_nav_bridge) |run g1_nav2 |topic echo [^ ]*cmd_vel)|^[^ ]*rviz2 -d [^ ]*g1_nav_minimal'
+NAV="$EXECUTOR"'|^[^ ]*python3 [^ ]*/ros2 (launch (g1_nav2|humanoid_nav_bridge) |run (g1_nav2|explore_lite) |topic echo [^ ]*cmd_vel)|^[^ ]*/explore_lite/explore( |$)|^[^ ]*rviz2 -d [^ ]*g1_nav_minimal'
 
 pids_with_children() {  # pattern -> matching PIDs and all their descendants
   local all frontier kids
@@ -50,7 +51,7 @@ stop_matching() {  # pattern, label, seconds to wait after SIGINT
 inside() {  # runs where the nodes are (container or host)
   local status=0
   stop_matching "$EXECUTOR" "Loco executor (StopMove)" 5 || status=1
-  stop_matching "$NAV" "Nav2, /scan, monitor, RViz" 20 || status=1
+  stop_matching "$NAV" "explorer, Nav2, /scan, monitor, RViz" 20 || status=1
   if [[ ${1:-} == all ]]; then
     bash "$(dirname "$0")/stop_ros.sh" || status=1      # TF, map and anything else left
   fi
