@@ -5,7 +5,7 @@ stack over the robot Ethernet:
 
     TF   map -> robot_center            robot box in the glasses        (g1_mapping, g1_sensors)
     TF   map -> ar_tag_<id>             wall-tag anchor                  (tag_anchor node)
-    /cloud_map  (PointCloud2)           LiDAR map, voxelised, <= 1500 pts (g1_mapping)
+    /g1_mapping/cloud_map_3d (PointCloud2)  3D LiDAR map, voxelised, <= 1500 pts (g1_mapping)
     /plan       (nav_msgs/Path)         Nav2 path                        (Nav2, when running)
     /ar_glasses/markers (MarkerArray)   POIs / 3D boxes                  (semantic_query, tools)
 
@@ -195,7 +195,7 @@ class ArBridgeNode(Node):
                               int(p("cloud_max_points", 30000).value))
         best_effort = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT,
                                  durability=DurabilityPolicy.VOLATILE)
-        self.create_subscription(PointCloud2, p("cloud_topic", "/cloud_map").value,
+        self.create_subscription(PointCloud2, p("cloud_topic", "/g1_mapping/cloud_map_3d").value,
                                  self.world.on_cloud, best_effort)
         self.create_subscription(Path, p("path_topic", "/plan").value, self.world.on_path, 10)
         self.create_subscription(MarkerArray, p("markers_topic", "/ar_glasses/markers").value,

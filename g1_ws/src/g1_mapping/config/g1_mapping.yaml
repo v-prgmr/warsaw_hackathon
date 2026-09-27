@@ -16,6 +16,7 @@ topics:
   imu_livox_filtered: /g1_mapping/imu_livox/data  # + orientation (imu_complementary_filter)
   rgbd_image: /g1_mapping/rgbd_image
   odom: /odom                              # odometry used by RTAB-Map / Nav2
+  cloud_map_3d: /g1_mapping/cloud_map_3d   # 3D map cloud (map_assembler) for RViz / AR glasses
 
 frames:
   base: robot_center                       # child frame of /dog_odom
@@ -92,8 +93,8 @@ rtabmap_parameters:
   # tabletops and between legs. Reprocessed g1_rtabmap_dry_20260926_202136.db, obstacles kept at
   # the zone edge / inside / free space outside the zone: 3D + 8 m 55 % / 31 % / 15.7 m2,
   # 2D + 4 m 75 % / 80 % / 0.4 m2 (ray tracing off: 100 % / 100 % / 2.4 m2).
-  # Cost: local grids are x,y only, so /cloud_map is flat. Get the 3D map from the database
-  # (rtabmap-export --scan), and give compare_imu_sources a config with Grid/3D "true".
+  # Cost: local grids are x,y only, so /cloud_map is flat. The 3D cloud comes from map_assembler
+  # (topics.cloud_map_3d, cloud_3d_parameters below).
   Grid/3D: "false"
 
   Grid/MaxObstacleHeight: "1.0"            # relative to robot_center (~1.7 m above the floor)
@@ -111,3 +112,11 @@ rtabmap_parameters:
   # g1_rtabmap_dry_20260926_202136.db, 0.1 gives 0.91 deg. 0.03 over-constrains (floor inliers
   # 80 % -> 50 %): the pelvis IMU jitters ~1.5 deg per node through the waist joints.
   Optimizer/GravitySigma: "0.1"
+
+# 3D map cloud (topics.cloud_map_3d, launch arg cloud_3d): rtabmap_util map_assembler rebuilds 3D
+# local grids from the rtabmap node's map data. Its Grid/* parameters are rtabmap_parameters'
+# Grid/* with these overrides.
+cloud_3d_parameters:
+  Grid/3D: "true"
+  Grid/RayTracing: "false"                 # 3D ray tracing erased tables and chairs (see above)
+  Grid/RangeMax: "8"                       # no free space in this cloud, so no leak past the zone

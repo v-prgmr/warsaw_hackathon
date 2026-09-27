@@ -87,7 +87,7 @@ Visualization Manager:
       Max Intensity: 4096
       Min Color: 0; 0; 0
       Min Intensity: 0
-      Name: 3D map (cloud_map)
+      Name: 3D map (cloud_map_3d)
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 3
@@ -99,7 +99,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /cloud_map
+        Value: /g1_mapping/cloud_map_3d
       Use Fixed Frame: true
       Use rainbow: true
       Value: true

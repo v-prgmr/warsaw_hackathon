@@ -4,7 +4,8 @@
    (/dog_imu_raw) and the torso-mounted LiDAR while walking, and raw gyro bias while standing.
 2. Replays the bag through g1_mapping once per IMU source and records: ICP tracking (lost scans,
    inlier ratio), loop closures, the final map -> odom correction (accumulated odometry drift),
-   floor flatness of the optimized trajectory, and wall/floor thickness in /cloud_map (sharpness).
+   floor flatness of the optimized trajectory, and wall/floor thickness in the 3D map cloud
+   (topics.cloud_map_3d from map_assembler; sharpness).
 
 Replaying publishes robot topics (/dog_odom, /utlidar/..., /lf/lowstate), so this refuses to run
 on the robot's DDS domain (0). Run it in the sim container:
@@ -140,7 +141,7 @@ def analyze_bag(uri, storage, counts, topics):
 class Monitor:
     """Collects g1_mapping outputs during one replay."""
 
-    def __init__(self, source):
+    def __init__(self, source, cloud_topic):
         self.node = rclpy.create_node(f"imu_compare_{source}",
                                       parameter_overrides=[Parameter("use_sim_time", value=True)])
         self.odom_info, self.loops, self.proximity = [], 0, 0
@@ -151,7 +152,7 @@ class Monitor:
         n.create_subscription(OdomInfo, "/odom_info", self.on_odom_info, 100)
         n.create_subscription(Info, "/info", self.on_info, 100)
         n.create_subscription(Path, "/mapPath", lambda m: setattr(self, "path", m), 10)
-        n.create_subscription(PointCloud2, "/cloud_map",
+        n.create_subscription(PointCloud2, cloud_topic,
                               lambda m: setattr(self, "cloud_raw", m), 1, raw=True)
 
     def on_odom_info(self, m):
@@ -238,14 +239,14 @@ def map_thickness(xyz, cell=0.3, min_points=10):
     return (float(np.median(thick) * 100) if thick else None), len(thick)
 
 
-def replay(bag, source, out_dir, rate, replay_topics, launch_args):
+def replay(bag, source, out_dir, rate, replay_topics, launch_args, cloud_topic):
     db = os.path.join(out_dir, f"{source}.db")
     with open(os.path.join(out_dir, f"{source}_launch.log"), "w") as log:
         launch = subprocess.Popen(
             ["ros2", "launch", "g1_mapping", "mapping.launch.py", "use_sim_time:=true",
              f"imu_source:={source}", f"database_path:={db}", "delete_db:=true", *launch_args],
             stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
-        mon = Monitor(source)
+        mon = Monitor(source, cloud_topic)
         try:
             if not mon.wait_ready():
                 raise RuntimeError(f"g1_mapping did not start; see {log.name}")
@@ -369,7 +370,7 @@ def main():
                     continue
                 print(f"Replaying with imu_source:={source} ...")
                 results[source] = replay(bag, source, out, args.rate, replay_topics,
-                                         args.launch_arg)
+                                         args.launch_arg, topics["cloud_map_3d"])
         finally:
             rclpy.try_shutdown()
 

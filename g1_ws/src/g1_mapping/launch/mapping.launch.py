@@ -8,6 +8,8 @@ uses the odom frame.
 imu_source:=livox uses the MID-360 internal IMU (rigid with the LiDAR) instead of /dog_imu_raw:
 livox_imu_fix (accel g -> m/s^2) -> imu_complementary_filter (orientation + gyro bias).
 use_rgbd:=true attaches RealSense RGB-D to map nodes (color only; the 2D grid stays LiDAR-only).
+cloud_3d:=true (default) adds map_assembler: the 3D map cloud on topics.cloud_map_3d, since the
+rtabmap node's grids, and so its /cloud_map, are 2D.
 
 Topic / frame names and tuning come from config/g1_mapping.yaml.
 
@@ -181,6 +183,22 @@ def _launch_setup(context):
         parameters=[common, icp_params, slam_params], remappings=slam_remaps,
         arguments=slam_args))
 
+    if _bool(context, "cloud_3d"):
+        # 3D map cloud: the rtabmap node's grids are 2D (Grid/3D "false"), so its /cloud_map is
+        # flat. map_assembler rebuilds 3D local grids from the same map data. Own namespace: it
+        # also publishes map, grid_prob_map, octomap_*, which must not collide with rtabmap's.
+        grid_params = {k: v for k, v in cfg.get("rtabmap_parameters", {}).items()
+                       if k.startswith("Grid")}
+        grid_params.update(cfg.get("cloud_3d_parameters", {}))
+        nodes.append(Node(
+            package="rtabmap_util", executable="map_assembler", name="map_assembler",
+            namespace="g1_mapping", output="screen",
+            parameters=[{"use_sim_time": use_sim_time, "regenerate_local_grids": True},
+                        grid_params],
+            remappings=[("mapData", "/mapData"),
+                        ("rtabmap/get_map_data", "/rtabmap/get_map_data"),
+                        ("cloud_map", topics["cloud_map_3d"])]))
+
     if _bool(context, "rtabmap_viz"):
         nodes.append(Node(
             package="rtabmap_viz", executable="rtabmap_viz", output="screen",
@@ -224,6 +242,9 @@ def generate_launch_description():
         DeclareLaunchArgument("delete_db", default_value="true",
                               description="Start a new map (ignored in localization mode)."),
         DeclareLaunchArgument("localization", default_value="false"),
+        DeclareLaunchArgument("cloud_3d", default_value="true",
+                              description="3D map cloud from map_assembler (RViz, AR glasses); "
+                                          "the rtabmap node's /cloud_map is flat."),
         DeclareLaunchArgument("rtabmap_viz", default_value="false"),
         DeclareLaunchArgument("rviz", default_value="false"),
         OpaqueFunction(function=_launch_setup),

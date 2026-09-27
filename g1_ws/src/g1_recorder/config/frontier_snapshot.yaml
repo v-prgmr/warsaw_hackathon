@@ -9,6 +9,7 @@ topics:
   - /odom
   - /scan
   - /cloud_map
+  - /g1_mapping/cloud_map_3d
   - /global_costmap/costmap
   - /local_costmap/costmap
   - /explore/frontiers

@@ -30,7 +30,8 @@ ros2 bag play bags/full_survey_take_01 --clock
 | `static_tf` | `true` | publish the **estimated** fallback extrinsics from the YAML (legacy bags without `/tf` or `/lf/lowstate`). Set `false` when `g1_sensors tf_chain` runs (live, or replaying `/lf/lowstate`) |
 | `database_path` | `~/.ros/g1_rtabmap.db` | RTAB-Map database |
 | `localization` | `false` | localize in an existing database instead of mapping |
-| `rtabmap_viz`, `rviz` | `false` | GUIs (`rviz/mapping.rviz`: TF, `/map`, `/cloud_map`, deskewed scan, `/odom`) |
+| `cloud_3d` | `true` | 3D map cloud on `/g1_mapping/cloud_map_3d` from `rtabmap_util map_assembler` (the rtabmap node's grids are 2D, so its `/cloud_map` is flat) |
+| `rtabmap_viz`, `rviz` | `false` | GUIs (`rviz/mapping.rviz`: TF, `/map`, `/g1_mapping/cloud_map_3d`, deskewed scan, `/odom`) |
 
 ## Compare the IMU sources on a walking bag
 
@@ -42,7 +43,7 @@ It measures the waist-joint motion while walking (from `/lf/lowstate`: the joint
 IMU and the torso LiDAR) and the raw gyro bias while standing. It then replays the bag through
 `g1_mapping` with `imu_source:=dog` and `livox`, and writes `<bag>_imu_compare/report.md`: lost scans,
 ICP inlier ratio, loop closures, final `map -> odom` correction, trajectory z range on the flat
-floor, and wall/floor thickness in `/cloud_map`. It refuses to replay on `ROS_DOMAIN_ID` 0;
+floor, and wall/floor thickness in the 3D map cloud (`/g1_mapping/cloud_map_3d`). It refuses to replay on `ROS_DOMAIN_ID` 0;
 `--analyze-only` skips the replays. Check the tape measurements against both maps as well.
 
 Save the 2D map while it is being published: `ros2 run nav2_map_server map_saver_cli -f <name>`.

@@ -30,7 +30,8 @@ ar_bridge:
     lidar_view_cone_deg: 55.0     # LiDAR "full": only map points within this angle of the
                                   # glasses' view (display ~46 deg diagonal); 0 = whole map
     lidar_view_max_m: 8.0         # ... and within this distance of the glasses
-    cloud_topic: /cloud_map       # RTAB-Map map cloud (g1_mapping)
+    cloud_topic: /g1_mapping/cloud_map_3d   # 3D map cloud (g1_mapping map_assembler;
+                                  # the rtabmap node's /cloud_map is flat)
     cloud_voxel_m: 0.08
     cloud_max_points: 30000       # kept in memory; <= 1500 go to the glasses per frame
     path_topic: /plan             # Nav2 global path

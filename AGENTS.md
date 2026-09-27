@@ -251,7 +251,8 @@ The robot only publishes raw sensor streams. Everything else comes from nodes **
 
 | TF / topic | Owner |
 |---|---|
-| `map -> odom`, `/map`, `/cloud_map` | `g1_mapping` (RTAB-Map) |
+| `map -> odom`, `/map`, `/cloud_map` (flat: 2D grids) | `g1_mapping` (RTAB-Map) |
+| `/g1_mapping/cloud_map_3d` (3D map cloud for RViz / AR glasses) | `g1_mapping` `map_assembler` (`cloud_3d:=true`, default) |
 | `odom -> robot_center`, `/odom` | `g1_mapping` `icp_odometry` (default); `odom_to_tf` from `/dog_odom` only in `odom_source:=dog_odom` |
 | `robot_center -> pelvis -> … URDF links`, `/joint_states` | `g1_sensors tf_chain`: `robot_state_publisher` (G1 URDF) + the `/lowstate` bridge (§10.1) |
 | frames not in the URDF (`livox_frame`, `camera_link`, `dog_imu_link`, OAK-D mount, `robot_center -> pelvis`) | `g1_sensors tf_chain` static glue (§10.1); `g1_mapping static_tf:=true` only for legacy bags without `/tf` or `/lf/lowstate` |
@@ -1505,7 +1506,7 @@ is not used.
 
 ```text
 Lens Studio (Windows/macOS only) ──USB-C, once──► Spectacles Drafts (persists across laptop / OS)
-Spectacles ──Wi-Fi──► g1_ar_bridge ar_bridge (robot laptop, ROS 2) ◄── TF, /cloud_map, /plan, markers
+Spectacles ──Wi-Fi──► g1_ar_bridge ar_bridge (robot laptop, ROS 2) ◄── TF, /g1_mapping/cloud_map_3d, /plan, markers
                       ▲ map -> ar_tag_0 ◄── g1_ar_bridge tag_anchor ◄── robot camera sees the wall tag
            (no robot: g1_ar_bridge.sim_main with a simulated G1, or ar_glasses/mock_bridge)
 ```
