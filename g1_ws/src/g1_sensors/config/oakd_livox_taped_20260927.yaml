@@ -1,0 +1,33 @@
+# Reversible geometry estimate for the CURRENT taped OAK-D mount; do not reuse after it shifts.
+status: taped_mount_provisional
+sensor_id: "OAK-D MXID 14442C102106F1D000"
+frames:
+  parent: camera_link
+  child: oak-d-base-frame
+  aligned_depth: oak_rgb_camera_optical_frame
+  lidar: livox_frame
+method: "joint, trimmed point-to-point ICP; 5 cm voxel; fixed torso LiDAR URDF extrinsic"
+fit:
+  captures:
+    - oak_livox_geometry_20260927_044430
+    - oak_livox_geometry_20260927_044703
+  stationary_windows: 14
+  correction_from_previous_mount_m: 0.1159
+  correction_from_previous_mount_deg: 4.858
+  icp_translation_change_in_oak_optical_frame_m: 0.1084
+  report: oak_livox_geometry_20260927_044430/registration_joint_taped_20260927.yaml
+evaluation_on_fitting_scenes:
+  first_cloud_median_m_before_after: [0.0401, 0.0309]
+  first_depth_ray_median_m_before_after: [0.0559, 0.0306]
+  second_cloud_median_m_before_after: [0.0432, 0.0316]
+  second_depth_ray_median_m_before_after: [0.066, 0.029]
+  independent_holdout: false
+  warning: "Both scenes fitted; no separate independent holdout. Taped mount must be rechecked after any physical shift."
+mount_transform:
+  translation_m: [0.25336464980884943, 0.0831704862070482, -0.2219241270866793]
+  rpy_rad: [0.03808293536055377, -0.6835639772286368, -0.09396130051252706]
+  quaternion_xyzw: [0.002181513829800879, -0.3355785042156528, -0.03786429972778046, 0.9412484280528283]
+runtime:
+  single_owner: g1_sensors/tf_chain.launch.py
+  requires_restart: true
+  automatically_published_by_optimizer: false

@@ -314,6 +314,12 @@ def load_windows(root, step, scan_radius, voxel_size):
 
 def mount_from_livox(oak_bag, livox_bag, oak_from_livox):
     """Compose the proposed single camera_link -> oak-d-base-frame mount TF."""
+    expected = {
+        "oak": {("oak-d-base-frame", "oak"), ("oak", "oak_rgb_camera_frame"),
+                ("oak_rgb_camera_frame", "oak_rgb_camera_optical_frame")},
+        "livox": {("torso_link", "d435_link"), ("d435_link", "camera_link"),
+                  ("torso_link", "mid360_link"), ("mid360_link", "livox_frame")},
+    }
     edges = {}
     for key, bag in (("oak", oak_bag), ("livox", livox_bag)):
         collected = {}
@@ -322,9 +328,7 @@ def mount_from_livox(oak_bag, livox_bag, oak_from_livox):
                 continue
             for item in deserialize_message(raw, TFMessage).transforms:
                 collected[(item.header.frame_id, item.child_frame_id)] = tf_matrix(item)
-            if key == "oak" and ("oak_rgb_camera_frame", "oak_rgb_camera_optical_frame") in collected:
-                break
-            if key == "livox" and ("camera_link", "oak-d-base-frame") in collected:
+            if expected[key].issubset(collected):
                 break
         edges[key] = collected
     robot = edges["livox"]
@@ -344,8 +348,14 @@ def main():
     parser.add_argument("--voxel-size", type=float, default=0.05)
     parser.add_argument("--candidate", type=Path,
                         help="evaluate a pre-fitted registration on independent captures without refitting")
+    parser.add_argument("--fit-all", action="store_true",
+                        help="fit all scenes jointly for a provisional result (NO independent holdout)")
     parser.add_argument("--output", type=Path, help="default <capture>/registration.yaml")
     args = parser.parse_args()
+    if args.fit_all and args.candidate:
+        parser.error("--fit-all cannot be combined with --candidate")
+    if args.fit_all and len(args.capture) < 2:
+        parser.error("--fit-all requires at least two distinct capture directories")
     datasets = [load_windows(path, args.window_step, args.scan_radius, args.voxel_size)
                 for path in args.capture]
     seed, info = datasets[0][1:]
@@ -362,7 +372,11 @@ def main():
                 identities.add(yaml.safe_load(stream).get("oak", {}).get("mxid_reported_by_driver"))
     if len(identities) > 1:
         raise ValueError("Captures report different OAK MXIDs; one rigid extrinsic cannot fit them")
-    if len(datasets) == 1:
+    if args.fit_all:
+        train = [window for windows, _, _ in datasets for window in windows]
+        held_out = []
+        heldout_note = "all available scenes used for joint ICP; NO independent spatial holdout"
+    elif len(datasets) == 1:
         train, held_out = datasets[0][0][:-2], datasets[0][0][-2:]
         heldout_note = "same stationary viewpoint: temporal holdout is NOT independent spatial validation"
     else:
@@ -386,7 +400,9 @@ def main():
         improved[:3, :3] @ seed[:3, :3].T).magnitude()))
     report = {
         "captures": [str(path.resolve()) for path in args.capture],
-        "fit_mode": "fixed_candidate_validation" if args.candidate else "trimmed_point_to_point_icp",
+        "fit_mode": ("fixed_candidate_validation" if args.candidate else
+                     "joint_trimmed_point_to_point_icp" if args.fit_all else
+                     "trimmed_point_to_point_icp"),
         "candidate_source": str(args.candidate.resolve()) if args.candidate else None,
         "depth_frame": info.header.frame_id,
         "lidar_frame": "livox_frame", "depth_encoding": "16UC1", "depth_units": "mm",
@@ -404,8 +420,11 @@ def main():
         "icp_last_iteration": iterations[-1] if iterations else None,
         "proposed_mount_parent": "camera_link", "proposed_mount_child": "oak-d-base-frame",
         "ready_for_tf_publication": False,
-        "reasons": (["Need >=3 physically different viewpoints, with the last held out"]
-                    if len(datasets) < 3 else ["Inspect independent depth/point-cloud overlays and mount identity before replacing TF"]),
+        "reasons": (["All two scenes used for fitting; no independent spatial holdout",
+                     "Taped OAK mount: recheck if camera position changes"] if args.fit_all else
+                    ["Need >=3 physically different viewpoints, with the last held out"]
+                    if len(datasets) < 3 else
+                    ["Inspect independent depth/point-cloud overlays and mount identity before replacing TF"]),
     }
     mount = mount_from_livox(args.capture[0] / "oak", args.capture[0] / "livox", improved)
     report["proposed_mount_xyz_m"] = mount[:3, 3].tolist()
@@ -414,11 +433,12 @@ def main():
     output = args.output or args.capture[0] / "registration.yaml"
     with output.open("w") as stream:
         yaml.safe_dump(report, stream, sort_keys=False)
-    heldout = held_out[0]
-    before_image = output.parent / f"{heldout['capture']}_livox_before.png"
-    after_image = output.parent / f"{heldout['capture']}_livox_after.png"
-    if save_overlay(heldout, seed, info, before_image, (0, 0, 255)):
-        save_overlay(heldout, improved, info, after_image, (0, 255, 0))
+    views_to_overlay = [held_out[0]] if held_out else [datasets[0][0][0], datasets[-1][0][0]]
+    for view in views_to_overlay:
+        before_image = output.parent / f"{view['capture']}_livox_before.png"
+        after_image = output.parent / f"{view['capture']}_livox_after.png"
+        if save_overlay(view, seed, info, before_image, (0, 0, 255)):
+            save_overlay(view, improved, info, after_image, (0, 255, 0))
     if args.candidate and len(datasets) > 2:
         other_view = datasets[-2][0][0]
         save_overlay(other_view, seed, info,

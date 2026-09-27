@@ -35,7 +35,7 @@ ros2 launch g1_sensors tf_chain.launch.py                 # rviz:=true for Robot
 ros2 launch g1_mapping mapping.launch.py static_tf:=false
 ```
 
-The `tf_chain` launch is the **single runtime owner** of the LiDAR-validated provisional
+The `tf_chain` launch is the **single runtime owner** of the taped-mount provisional
 `camera_link -> oak-d-base-frame` mount TF. Keep the RealSense and OAK-D drivers running for
 their own camera-internal `/tf_static` links. After starting `tf_chain`, inspect the mount
 and the connected optical frames with:
@@ -46,8 +46,8 @@ ros2 run tf2_ros tf2_echo camera_color_optical_frame oak_rgb_camera_optical_fram
 ```
 
 The current calibration artifact is stored on the G1 at
-`/home/unitree/g1_calibration/oakd_livox_provisional.yaml` for recovery; the prior
-RGB-derived result is retained separately. This artifact is **data**, not
+`/home/unitree/g1_calibration/oakd_livox_taped_20260927.yaml` for recovery; the prior
+LiDAR and RGB results are retained separately. This artifact is **data**, not
 a second publisher: do not run an additional `static_transform_publisher` on the Orin for this
 child frame while `tf_chain` is running.
 
@@ -134,6 +134,21 @@ estimate reduces errors in both other scenes. It also writes a proposed
 The tool also saves red-before and green-after LiDAR projections onto a held-out
 OAK RGB frame next to its YAML report; check these against visible scene edges.
 
+For a **taped or otherwise temporary mount** where exactly two new scenes must
+produce a provisional TF, `--fit-all <scene1> <scene2>` uses both scenes in a
+single trimmed ICP. The output explicitly has **no independent holdout**, keeps
+`ready_for_tf_publication: false`, and saves before/after projections for both
+scenes. Recheck the TF whenever the tape/mount shifts; do not mix bags from the
+old physical mount.
+
+The 2026-09-27 taped-mount take used
+`oak_livox_geometry_20260927_044430` and `oak_livox_geometry_20260927_044703`.
+The joint result and its no-holdout caveat are preserved in
+`config/oakd_livox_taped_20260927.yaml` and in the first capture's
+`registration_joint_taped_20260927.yaml`. `g1_sensors.yaml` publishes **only** that
+mount pose when `tf_chain` next starts. The older `oakd_livox_provisional.yaml`
+remains an archive for the previous, non-taped mount.
+
 ## Design notes
 
 - **URDF:** `urdf/g1_29dof_rev_1_0.urdf`, vendored unchanged from `third_party/unitree_ros`. The
@@ -174,10 +189,10 @@ OAK RGB frame next to its YAML report; check these against visible scene edges.
 ## Open
 
 - `d435_link -> camera_link` identity is unverified: check in RViz when the RealSense runs.
-- OAK-D: `g1_sensors.yaml` now includes a **provisional**, OAK depth/Livox-derived
-  `camera_link -> oak-d-base-frame` mount link. Its source and independent-view errors
-  are in `config/oakd_livox_provisional.yaml`; the earlier ChArUco calibration is
-  archived in `config/oakd_realsense_provisional.yaml`. The OAK driver publishes the
+- OAK-D: `g1_sensors.yaml` now includes the **taped-mount provisional** OAK
+  depth/Livox-derived `camera_link -> oak-d-base-frame` link. Its joint-fit source
+  and no-holdout limitation are in `config/oakd_livox_taped_20260927.yaml`.
+  Previous LiDAR and ChArUco calibrations are archived separately. The OAK driver publishes the
   internal `oak-d-base-frame -> oak -> oak_rgb_camera_optical_frame` chain; RealSense
   publishes `camera_link -> camera_color_optical_frame`. Publish the mount link **only
   through this `tf_chain` launch**, never also through another static TF node. Check
