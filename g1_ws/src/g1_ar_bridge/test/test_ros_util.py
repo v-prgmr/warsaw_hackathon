@@ -99,5 +99,8 @@ def test_markers_become_annotations_in_map():
     assert np.allclose(line.points, [[1, 0, 0], [1, 1, 0], [0, 1, 0]])   # odom -> map
     ru.apply_marker_array(cur, [marker(ru.CUBE, 1, action=ru.DELETE)], lookup)
     assert "demo/1" not in cur
-    ru.apply_marker_array(cur, [marker(0, 0, action=ru.DELETEALL)], lookup)
+    ru.apply_marker_array(cur, [marker(ru.SPHERE, 7, ns="other")], lookup)
+    ru.apply_marker_array(cur, [marker(0, 0, action=ru.DELETEALL)], lookup)   # ns "demo" only
+    assert set(cur) == {"other/7"}
+    ru.apply_marker_array(cur, [marker(0, 0, ns="", action=ru.DELETEALL)], lookup)   # everything
     assert cur == {}

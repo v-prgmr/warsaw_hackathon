@@ -159,7 +159,14 @@ def apply_marker_array(current, markers, lookup_T_map):
     """
     for m in markers:
         if m.action == DELETEALL:
-            current.clear()
+            # visualization_msgs: "deletes all objects (or those with the given ns if any)";
+            # without the ns scope one node's DELETEALL would wipe every other node's markers
+            if m.ns:
+                prefix = marker_key(m).rsplit("/", 1)[0] + "/"
+                for key in [k for k in current if k.startswith(prefix)]:
+                    del current[key]
+            else:
+                current.clear()
             continue
         key = marker_key(m)
         if m.action == DELETE:

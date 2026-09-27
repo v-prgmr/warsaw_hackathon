@@ -69,12 +69,16 @@ The OAK-D driver on the Orin (Foxy, CycloneDDS) segfaults at launch on the robot
 camera.launch.py`) and copy its topics into domain 0 on the laptop:
 
 ```bash
-ros2 run g1_sensors oak_domain_relay                 # 78 -> 0: /oak/rgb|stereo/image_raw + camera_info, /tf_static
-ros2 run g1_sensors oak_domain_relay --max-rate 15   # images per second (default 10, 0 = all)
+ros2 run g1_sensors oak_domain_relay --in-reliable   # 78 -> 0: /oak/rgb|stereo/image_raw + camera_info, /tf_static
+ros2 run g1_sensors oak_domain_relay --max-rate 0     # images per second (default 15, 0 = all)
 ```
 
 Messages are copied serialized (no decode); images are decimated by header stamp, so RGB and
-aligned depth stay paired. `scripts/start_ar_glasses.sh --orin` starts both. If the robot is
+aligned depth stay paired. They are republished **Reliable**, like the driver, so RViz's default
+QoS and our Best Effort subscribers both work. Use `--in-reliable`: measured 2026-09-27, a Best
+Effort subscriber across the network got ~1 of 8 RGB frames/s (a 2.7 MB image is lost whole when
+one fragment is), a Reliable one all of them. First choice is still domain 0 without the relay
+(`ROBOT_SESSION.md`); domain 78 only when the driver crashes there. `scripts/start_ar_glasses.sh --orin` starts both. If the robot is
 moved, the driver can stall (topics advertised, no data): restart it on the Orin.
 
 ## Offline OAK-D depth ↔ MID-360 LiDAR extrinsic check

@@ -22,6 +22,12 @@ ROS 2 capture/keyframe/viz packages (`g1_recorder`, `keyframe_manager`, `scene_s
 Build with `colcon build` in `g1_ws/`. Offline tests need no robot; to record from the robot
 see **"Testing from the computer connected to the robot"** in [`g1_ws/README.md`](g1_ws/README.md).
 
+## Running a G1 session — [`ROBOT_SESSION.md`](ROBOT_SESSION.md)
+
+Camera, TF, map, AR glasses, RViz and the object search, in one command
+(`bash scripts/start_g1_session.sh`) or terminal by terminal; ask for objects with
+`bash scripts/g1_search.sh red cup`.
+
 ## AR glasses — [`ar_glasses/`](ar_glasses/README.md)
 
 Snap Spectacles (2024) showing the robot, its path, the LiDAR map and semantic POIs in the room.

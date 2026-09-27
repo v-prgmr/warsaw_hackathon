@@ -1,5 +1,8 @@
 # AR glasses + G1: setup and running a session
 
+> **Whole session (camera, TF, map, glasses, RViz, object search):** [`../ROBOT_SESSION.md`](../ROBOT_SESSION.md),
+> `bash scripts/start_g1_session.sh`. This page covers the glasses in detail.
+
 Snap Spectacles (2024) show what the G1 knows in the real room: the robot, the LiDAR map, the
 Nav2 path and POIs. The glasses and the robot are aligned with one AprilTag on a wall that both
 see. Background: [`README.md`](README.md) (glasses side, Lens deployment),
@@ -141,7 +144,7 @@ Ctrl-C the OAK-D driver on the Orin. Never `kill -9` a `ros2 launch` (AGENTS.md 
 | AR 3 stays "searching" | the robot camera does not see the tag: closer, facing it, light |
 | Registration never finishes | read the `waiting for:` line in AR 3. The glasses hide their text above 80 %; the bridge now keeps it below until it commits. Keep `bags/ar_registration/` and replay it: `python3 -m g1_ar_bridge.replay_registration bags/ar_registration` (in the container) |
 | "disagree on 'up'" | the robot camera's TF is wrong: check the OAK-D mount calibration |
-| Robot box offset from the robot | wrong `--tag-size`, the tag moved, or the (taped) OAK-D mount shifted: re-measure the calibration (`g1_sensors` README, OAK-D ↔ LiDAR) |
+| Robot box offset from the robot | wrong `--tag-size`, the tag moved, or the OAK-D mount was moved: re-measure the calibration (`g1_sensors` README, OAK-D ↔ LiDAR) |
 | Dimensional OS missing from Drafts | redeploy from Lens Studio ([`README.md`](README.md) Part 1) |
 
 ## 4. Search for objects ("red cup") and mark them
@@ -154,8 +157,10 @@ bash scripts/start_ar_glasses.sh --tag-size 0.16 --orin --search
 ```
 1. Wait until window AR 7 says `poi_node up (…, device=cuda)` (the first start downloads the
    models, ~1 GB, into `bags/hf_cache`).
-2. In the glasses' text box type **`red cup`** (or "search for a red cup", "where is my bottle?").
-   The glasses answer "Searching for red cup…", and "searching: red cup" floats above the robot.
+2. In the glasses: menu → mode **Agent**, then say **"Robot, find the red cup"** (wake word
+   "robot"; for 30 s after that no wake word is needed; "cancel", "clear", "help"; never "stop",
+   which is the Lens's disabled e-stop). The glasses answer "Searching for red cup…", and
+   "searching: red cup" floats above the robot. Details: `../ROBOT_SESSION.md` §4.
 3. The robot checks new chest-camera frames for up to 20 s (~1 s per frame on an RTX GPU). Turn
    it towards the object. When found: a **green 3D box with the label** on the real object and
    "Found red cup (0.71), 1.8 m from the robot. Box 8 x 8 x 11 cm." Otherwise "No red cup found".
@@ -195,5 +200,5 @@ box with a heading line and a "Leo Rover" label (details and status:
 - **Reuse a map and the robot's tag measurement:** `g1_mapping ... localization:=true
   database_path:=/ws/bags/maps/room.db` + the bridge's `anchor_file` / `load_saved`
   (`config/ar_bridge.yaml`); only valid while the tag and the camera mount do not move.
-- The OAK-D mount is calibrated against the LiDAR (`g1_sensors/config/oakd_livox_taped_20260927.yaml`,
-  taped mount): if the camera is bumped, recalibrate before trusting the overlay.
+- The OAK-D mount is calibrated against the LiDAR (`g1_sensors/config/oakd_livox_rigid_20260927.yaml`,
+  rigid mount): if the mount is changed, recalibrate before trusting the overlay.

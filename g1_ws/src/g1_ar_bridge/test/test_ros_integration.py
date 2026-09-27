@@ -84,7 +84,8 @@ class FakeRobot:
                                        qos_profile_sensor_data)
         self.depth = n.create_publisher(Image, "/camera/aligned_depth_to_color/image_raw",
                                         qos_profile_sensor_data)
-        self.cloud = n.create_publisher(PointCloud2, "/cloud_map", 1)
+        # the bridge reads the 3D map cloud (g1_mapping map_assembler), config cloud_topic
+        self.cloud = n.create_publisher(PointCloud2, "/g1_mapping/cloud_map_3d", 1)
         self.markers = n.create_publisher(MarkerArray, "/ar_glasses/markers", 10)
         self.cmds, self.hmd, self.status = [], [], []
         n.create_subscription(String, "/ar_glasses/user_command",

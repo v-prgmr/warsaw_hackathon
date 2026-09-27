@@ -37,7 +37,7 @@ robot tag anchor (g1_ar_bridge), and a checks window. Prints the IP to type into
                    domain 78 (it segfaults on the robot's domain 0), plus a relay window that
                    copies its topics into domain 0 (g1_sensors oak_domain_relay)
   --oak-domain N   the OAK-D driver's DDS domain (default 78; 0 = directly, no relay)
-  --search         object search: type "red cup" in the glasses -> Grounding DINO + SAM2 on the
+  --search         object search: say "robot, find the red cup" in the glasses (Agent mode) -> Grounding DINO + SAM2 on the
                    chest OAK-D (GPU container g1-semantic, docker/Dockerfile.semantic) -> 3D box in
                    the glasses. First run downloads the models (~1 GB) into bags/hf_cache
                    (you type the Orin password there)
@@ -288,8 +288,8 @@ Next:
      "AR 3" prints: registered (april_tag)   (~30 s)
   3. Wrist menu (left palm up) -> LiDAR full. The demo scene (virtual table, green box,
      red bottle) stands in front of where the robot was at start (off: --no-demo).
-  4. With --search: type "red cup" (or "search for a red cup") in the glasses' text box. The
-     robot looks for up to 20 s; found objects get a green 3D box + label. "stop", "clear".
+  4. With --search: in the glasses (menu -> Agent mode) say "Robot, find the red cup". The
+     robot looks for up to 20 s; found objects get a green 3D box + label. "cancel", "clear" (not "stop": the Lens e-stop).
      The first search after start waits for the models to load (window AR 7).
   5. With --leo: Leo appears as a blue box once it sees the same wall tag
      (ros2 topic echo /leo_in_g1/status). Its camera mount is not measured yet: provisional.

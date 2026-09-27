@@ -4,11 +4,13 @@
         -> ("search", "red cup") ...
     "stop" / "cancel"   -> ("stop", None)       stop searching
     "clear"             -> ("clear", None)      remove the boxes of found objects
+    "help"              -> ("help", None)       what can I say?
 """
 import re
 
-_STOP = {"stop", "cancel", "stop search", "stop searching"}
+_STOP = {"stop", "cancel", "stop search", "stop searching", "never mind", "nevermind"}
 _CLEAR = {"clear", "clear all", "clear boxes", "reset"}
+_HELP = {"help", "what can you do", "what can i say", "commands"}
 _PREFIXES = ("search for", "search", "find me", "find", "look for", "looking for", "locate",
              "where is", "where's", "where are", "show me")
 _ARTICLES = ("a ", "an ", "the ", "my ", "some ")
@@ -22,6 +24,8 @@ def parse_command(text):
         return "stop", None
     if t in _CLEAR:
         return "clear", None
+    if t in _HELP:
+        return "help", None
     for prefix in _PREFIXES:
         if t.startswith(prefix + " "):
             t = t[len(prefix) + 1:]

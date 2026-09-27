@@ -81,4 +81,18 @@ leo_in_map:
     min_distance_m: 0.2           # accept tag sightings from this far ...
     max_distance_m: 4.0           # ... up to this far
     stale_s: 3.0                  # label "(no update)" after this long without relay data
+ar_scene_markers:
+  ros__parameters:
+    map_frame: map
+    robot_frame: robot_center
+    tag_frame: ar_tag_0
+    base_height_m: 0.78           # robot_center above the floor: the outline is drawn on the floor
+    robot_name: Unitree G1        # pin above the robot (+ battery % from /battery_state)
+    robot_label_height_m: 0.65    # above robot_center (the "searching: ..." text is at 0.9)
+    floor_outline: true           # walls of /map as lines on the floor
+    outline_period_s: 5.0         # at most this often, and only when the map changed
+    outline_simplify_m: 0.05      # straighter lines = fewer points for the glasses
+    outline_min_length_m: 0.4     # drop wall bits shorter than this
+    outline_max_lines: 60
+    outline_max_points: 1200
 
