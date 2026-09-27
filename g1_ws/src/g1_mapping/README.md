@@ -31,7 +31,22 @@ ros2 bag play bags/full_survey_take_01 --clock
 | `database_path` | `~/.ros/g1_rtabmap.db` | RTAB-Map database |
 | `localization` | `false` | localize in an existing database instead of mapping |
 | `cloud_3d` | `true` | 3D map cloud on `/g1_mapping/cloud_map_3d` from `rtabmap_util map_assembler` (the rtabmap node's grids are 2D, so its `/cloud_map` is flat) |
+| `raytrace` | `false` | add `raytrace_map`: a self-clearing voxel cloud on `/g1_mapping/cloud_raytraced` (see below) |
 | `rtabmap_viz`, `rviz` | `false` | GUIs (`rviz/mapping.rviz`: TF, `/map`, `/g1_mapping/cloud_map_3d`, deskewed scan, `/odom`) |
+
+## Clearing dynamic obstacles from a point cloud (`raytrace:=true`)
+
+`/cloud_map` ray-traces only *per RTAB-Map node*, and nodes are created on motion. So while the G1
+**stands still**, a person who walks in front of the LiDAR is baked into the current node and stays
+in the cloud long after they leave — RTAB-Map never re-observes the spot to clear it.
+
+`raytrace:=true` adds `raytrace_map`, a standalone occupancy voxel map: every scan, voxels a ray
+*ends in* gain log-odds (a surface) and voxels a ray *passes through* lose it (free space). It runs
+in the `odom` frame (no loop-closure jumps) and is **independent of RTAB-Map** — the pose graph,
+database and 2D grid are untouched. Continuously-visible walls/tables are re-hit and persist; a
+person who leaves is ray-traced through and clears in ~0.6 s (tune in `config/g1_mapping.yaml`
+`raytrace:`). View `/g1_mapping/cloud_raytraced` (a display is in `mapping.rviz`, off by default),
+or point the AR bridge's `cloud_topic` at it instead of `/g1_mapping/cloud_map_3d`.
 
 ## Compare the IMU sources on a walking bag
 

@@ -15,6 +15,7 @@ topics:
   imu_livox_raw: /g1_mapping/imu_livox/data_raw   # accel in m/s^2 (livox_imu_fix)
   imu_livox_filtered: /g1_mapping/imu_livox/data  # + orientation (imu_complementary_filter)
   rgbd_image: /g1_mapping/rgbd_image
+  cloud_raytraced: /g1_mapping/cloud_raytraced  # raytrace:=true; self-clearing voxel map
   odom: /odom                              # odometry used by RTAB-Map / Nav2
   cloud_map_3d: /g1_mapping/cloud_map_3d   # 3D map cloud (map_assembler) for RViz / AR glasses
 
@@ -34,6 +35,21 @@ lidar:
 
 deskewing:
   slerp: true
+
+# raytrace:=true adds raytrace_map, a standalone voxel occupancy map that clears dynamic
+# obstacles (a person walking past) from a point cloud even while the robot stands still — the
+# case RTAB-Map's per-node /cloud_map ray tracing misses (no motion -> no new node -> nothing
+# re-observes the spot). Accumulated in the odom frame (no loop-closure jumps); does NOT touch the
+# RTAB-Map pose graph / database / 2D grid. View /g1_mapping/cloud_raytraced, or point the AR
+# bridge's cloud_topic at it instead of /cloud_map.
+raytrace:
+  max_range: 5.0                           # rays clear voxels within this range of the sensor
+  log_odds_hit: 0.85                        # per-scan increase where a ray ends (a surface)
+  log_odds_miss: 0.4                        # per-scan decrease where a ray passes through (free)
+  log_odds_max: 3.5                         # clamp -> a gone obstacle clears in ~0.6 s at 10 Hz
+  publish_threshold: 1.0                    # min log-odds (~2 hits) to appear in the output cloud
+  publish_rate: 4.0                         # Hz the voxel map is republished
+  decimation: 1                            # process every Nth scan (raise on a weak CPU)
 
 livox_imu:                                 # imu_source:=livox only
   accel_scale: 9.80665                     # the MID-360 IMU reports acceleration in g

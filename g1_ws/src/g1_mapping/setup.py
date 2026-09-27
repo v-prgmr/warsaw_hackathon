@@ -28,6 +28,7 @@ setup(
             "livox_cloud_fix = g1_mapping.livox_cloud_fix:main",
             "livox_imu_fix = g1_mapping.livox_imu_fix:main",
             "odom_to_tf = g1_mapping.odom_to_tf:main",
+            "raytrace_map = g1_mapping.raytrace_map:main",
         ],
     },
 )

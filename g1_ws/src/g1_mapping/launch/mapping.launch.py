@@ -199,6 +199,24 @@ def _launch_setup(context):
                         ("rtabmap/get_map_data", "/rtabmap/get_map_data"),
                         ("cloud_map", topics["cloud_map_3d"])]))
 
+    if _bool(context, "raytrace"):
+        # Standalone self-clearing voxel map: clears dynamic obstacles (a person walking past)
+        # from a cloud even while the robot is stationary (see config raytrace:). Accumulated in
+        # the odom frame; independent of the RTAB-Map pose graph. Uses the deskewed scan if on.
+        rt = dict(cfg.get("raytrace", {}))
+        nodes.append(Node(
+            package="g1_mapping", executable="raytrace_map", output="screen",
+            parameters=[{"use_sim_time": use_sim_time, "fixed_frame": frames["odom"],
+                         "voxel_size": voxel,
+                         "max_range": float(rt.get("max_range", 5.0)),
+                         "log_odds_hit": float(rt.get("log_odds_hit", 0.85)),
+                         "log_odds_miss": float(rt.get("log_odds_miss", 0.4)),
+                         "log_odds_max": float(rt.get("log_odds_max", 3.5)),
+                         "publish_threshold": float(rt.get("publish_threshold", 1.0)),
+                         "publish_rate": float(rt.get("publish_rate", 4.0)),
+                         "decimation": int(rt.get("decimation", 1))}],
+            remappings=[("input", scan_topic), ("output", topics["cloud_raytraced"])]))
+
     if _bool(context, "rtabmap_viz"):
         nodes.append(Node(
             package="rtabmap_viz", executable="rtabmap_viz", output="screen",
@@ -234,6 +252,10 @@ def generate_launch_description():
                               description="Deskew the LiDAR cloud with per-point time."),
         DeclareLaunchArgument("use_rgbd", default_value="false",
                               description="Attach RealSense RGB-D to map nodes (color)."),
+        DeclareLaunchArgument("raytrace", default_value="false",
+                              description="Add raytrace_map: a self-clearing voxel cloud on "
+                                          "/g1_mapping/cloud_raytraced that removes dynamic "
+                                          "obstacles (e.g. a person) even while stationary."),
         DeclareLaunchArgument("static_tf", default_value="true",
                               description="Publish the ESTIMATED fallback extrinsics from the "
                                           "YAML (legacy bags). Set false when g1_sensors "
