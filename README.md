@@ -26,6 +26,8 @@ see **"Testing from the computer connected to the robot"** in [`g1_ws/README.md`
 
 Snap Spectacles (2024) showing the robot, its path, the LiDAR map and semantic POIs in the room.
 The glasses and the robot are aligned with one AprilTag on a wall, seen by a robot camera and by
-the glasses. Windows setup (Lens Studio 5.15.4, USB deploy), home test, and robot run:
+the glasses. **Setup and running a session: [`ar_glasses/SETUP.md`](ar_glasses/SETUP.md)**
+(one command: `bash scripts/start_ar_glasses.sh --tag-size 0.16 --orin`).
+Windows setup (Lens Studio 5.15.4, USB deploy), home test, and robot run:
 [`ar_glasses/README.md`](ar_glasses/README.md); the bridge is the ROS 2 package
 [`g1_ws/src/g1_ar_bridge`](g1_ws/src/g1_ar_bridge/README.md).

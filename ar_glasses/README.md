@@ -51,6 +51,7 @@ the chest OAK-D, put it at chest height.
 
 | Path | What |
 |---|---|
+| `SETUP.md` | **start here for a robot session**: one-time setup, `scripts/start_ar_glasses.sh`, troubleshooting |
 | `../g1_ws/src/g1_ar_bridge/` | **the bridge** (ROS 2 package + `sim_main` without ROS) and its tests |
 | `UBUNTU_BRIDGE_SETUP.txt` | hand-out for the robot laptop: network, container, launch, checks |
 | `lens_patches/g1-wall-tag-texts.patch` | optional: Lens texts for our setup ("robot laptop" instead of "Mac", wall tag) |
@@ -198,7 +199,8 @@ and a box sit on a virtual table to the robot's right. If the box floats off the
 
 ## Part 3 — With the robot (Ubuntu laptop on the robot's Ethernet)
 
-The Lens stays on the glasses; only the bridge changes. Summary (full hand-out:
+The Lens stays on the glasses; only the bridge changes. **Step by step, with the one-command
+launcher `scripts/start_ar_glasses.sh`: [`SETUP.md`](SETUP.md).** Summary (offline hand-out:
 `UBUNTU_BRIDGE_SETUP.txt`):
 
 ```bash

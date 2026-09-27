@@ -1,5 +1,7 @@
 AR GLASSES + G1: FULL PROCEDURE ON THE UBUNTU LAPTOP (works offline on the robot's hotspot)
 ============================================================================================
+QUICK WAY: bash scripts/start_ar_glasses.sh --tag-size 0.16 --orin   (guide: ar_glasses/SETUP.md)
+It does parts B2-B4 below for you (checks, container, windows) and prints the glasses IP.
 (repo v-prgmr/warsaw_hackathon, branch claude/ar-glasses. Background: g1_ws/src/g1_ar_bridge/README.md,
  ar_glasses/README.md, OAKD_REALSENSE_TF.md, AGENTS.md sections 7, 10.1, 19, 27)
 

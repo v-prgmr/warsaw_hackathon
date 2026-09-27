@@ -1480,7 +1480,9 @@ Agents must never "fix and retry" after an incident, and must not delete or rota
 
 Decided 2026-09-26 (team request): a person wearing **Snap Spectacles (2024)** sees what the G1
 knows, in place in the room: the robot, its path, the LiDAR map, and semantic POIs / 3D boxes
-(M4 output). Guides: `ar_glasses/README.md` (glasses, Windows / Ubuntu) and
+(M4 output). Session setup and one-command launcher: `ar_glasses/SETUP.md`,
+`scripts/start_ar_glasses.sh` (refuses a second TF/map owner; `--bridge-only` next to the
+navigation laptop). Guides: `ar_glasses/README.md` (glasses, Windows / Ubuntu) and
 `g1_ws/src/g1_ar_bridge/README.md` (bridge); hand-out for the robot laptop:
 `ar_glasses/UBUNTU_BRIDGE_SETUP.txt`.
 
