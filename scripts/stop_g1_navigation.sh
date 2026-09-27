@@ -14,7 +14,10 @@ SESSION_CONTAINER=g1-robot
 # Anchored on the process's own argv[0], so the windows' wrapper shells (whose arguments contain
 # the same command text) and this script are never matched.
 EXECUTOR='^[^ ]*/g1_loco_client( |$)|^[^ ]*/cmd_vel_gateway( |$)|^[^ ]*python3 [^ ]*/ros2 run g1_loco_cmdvel '
-NAV="$EXECUTOR"'|^[^ ]*python3 [^ ]*/ros2 (launch (g1_nav2|humanoid_nav_bridge) |run (g1_nav2|explore_lite) |topic echo [^ ]*cmd_vel)|^[^ ]*/explore_lite/explore( |$)|^[^ ]*rviz2 -d [^ ]*g1_nav_minimal'
+NAV="$EXECUTOR"'|^[^ ]*python3 [^ ]*/ros2 (launch (g1_nav2|humanoid_nav_bridge) |run (g1_nav2|explore_lite) |topic echo [^ ]*cmd_vel)|^[^ ]*/explore_lite/explore( |$)'
+# The navigation RViz (unified session + navigation, or the old minimal one). Joined to a
+# session it stays open: it is the session's only RViz (start_g1_navigation.sh closed the other).
+RVIZ='^[^ ]*rviz2 -d [^ ]*(g1_nav_minimal|g1_session_nav)\.rviz'
 
 pids_with_children() {  # pattern -> matching PIDs and all their descendants
   local all frontier kids
@@ -51,9 +54,12 @@ stop_matching() {  # pattern, label, seconds to wait after SIGINT
 inside() {  # runs where the nodes are (container or host)
   local status=0
   stop_matching "$EXECUTOR" "Loco executor (StopMove)" 5 || status=1
-  stop_matching "$NAV" "explorer, Nav2, /scan, monitor, RViz" 20 || status=1
+  stop_matching "$NAV" "explorer, Nav2, /scan, monitor" 20 || status=1
   if [[ ${1:-} == all ]]; then
+    stop_matching "$RVIZ" "navigation RViz" 5 || status=1
     bash "$(dirname "$0")/stop_ros.sh" || status=1      # TF, map and anything else left
+  elif pgrep -f -- "$RVIZ" >/dev/null; then
+    echo "navigation RViz: left open, it is the session's RViz now (closes with stop_g1_session.sh)"
   fi
   return $status
 }
