@@ -153,6 +153,18 @@ start: a virtual table top (0.75 m), a green 3D box on it ("box on the table") a
 bottle" label. It is virtual, to check the glasses before `semantic_query` exists; real POIs
 should use their own marker `ns`.
 
+**Skeleton (x-ray):** `ar_bridge.launch.py skeleton:=true` (or `ros2 run g1_ar_bridge
+ar_skeleton`) draws the robot as an articulated stick figure instead of a single dot. It reads
+the URDF link tree from the latched `/robot_description`, looks up every link in `map` through
+`/tf`, and publishes the body as a few `LINE_STRIP` markers — one stroke per limb (root → leaf),
+so the glasses get one `draw_world_annotation` per limb rather than one per bone. The forward
+kinematics is robot_state_publisher's; as the robot walks (g1_sensors tf_chain regenerates
+`/joint_states` from `/lf/lowstate`) the skeleton articulates with it. Needs tf_chain + the mapper
+so `map → … → each link` resolves; no protocol or Lens change. Tune with `rate_hz`, `line_width_m`,
+`color`, `lifetime_s` and `exclude` (link-name substrings, e.g. cameras/hands). To view it alone
+(e.g. in RViz while replaying a bag) use `skeleton.launch.py` — with tf_chain but no mapper, set
+`root_frame:=robot_center` since there is no `map`.
+
 Parameters: `config/ar_bridge.yaml` (documented inline). Launch arguments override the tag, the
 camera topics and the port.
 

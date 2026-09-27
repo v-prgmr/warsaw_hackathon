@@ -27,6 +27,7 @@ setup(
             "ar_bridge = g1_ar_bridge.bridge_node:main",
             "tag_anchor = g1_ar_bridge.tag_anchor_node:main",
             "publish_demo_pois = g1_ar_bridge.demo_pois_node:main",
+            "ar_skeleton = g1_ar_bridge.skeleton_node:main",
             "sim_bridge = g1_ar_bridge.sim_main:main",
             "replay_registration = g1_ar_bridge.replay_registration:main",
             "leo_in_map = g1_ar_bridge.leo_in_map_node:main",

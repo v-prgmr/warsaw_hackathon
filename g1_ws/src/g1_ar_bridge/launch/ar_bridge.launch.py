@@ -66,6 +66,10 @@ def _launch_setup(context):
         nodes.append(Node(package="g1_ar_bridge", executable="publish_demo_pois",
                           name="ar_demo_pois", output="screen",
                           parameters=[{"use_sim_time": use_sim_time}]))
+    if arg("skeleton").lower() in ("true", "1"):
+        # x-ray: the robot's whole body as a stick figure from the URDF + /tf, instead of one dot
+        nodes.append(Node(package="g1_ar_bridge", executable="ar_skeleton", name="ar_skeleton",
+                          output="screen", parameters=[{"use_sim_time": use_sim_time}]))
     if arg("leo").lower() in ("true", "1"):
         # Leo Rover in the G1 map via the shared tag (needs leo_relay running on Leo)
         leo = {"use_sim_time": use_sim_time}
@@ -129,6 +133,9 @@ def generate_launch_description():
         DeclareLaunchArgument("demo_pois", default_value="false",
                               description="also draw the demo scene (virtual table, green box, "
                                           "red bottle) in front of the robot"),
+        DeclareLaunchArgument("skeleton", default_value="false",
+                              description="also draw the robot as an articulated stick figure "
+                                          "(URDF + /tf) on /ar_glasses/markers, not just a dot"),
         DeclareLaunchArgument("leo", default_value="false",
                               description="also place the Leo Rover in the G1 map from its tag "
                                           "sightings (leo_relay on Leo -> UDP) and mark it"),
