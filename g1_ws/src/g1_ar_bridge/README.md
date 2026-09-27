@@ -133,6 +133,7 @@ python3 -m g1_ar_bridge.replay_registration <dir> --overlays /tmp/ov      # anno
 | `/ar_glasses/hmd_pose` | PoseStamped (`map`) | `ar_bridge` | same pose as `spectacles` |
 | `/ar_glasses/markers` | MarkerArray in | any node | POIs / boxes for the glasses: TEXT, SPHERE → labelled marker; CUBE → 3D box (+ `text`); LINE_STRIP / LINE_LIST → lines; DELETE / DELETEALL |
 | `/ar_glasses/user_command` | String out | `ar_bridge` | voice / typed commands from the glasses |
+| `/ar_glasses/reply` | String in | any node (e.g. `semantic_query`) | text shown in the glasses' assistant panel ("Found red cup …"), even before registration |
 | `/ar_glasses/status`, `/ar_glasses/anchor_status` | String (JSON) | both nodes | registration and anchor state |
 | `/cloud_map`, `/plan` | in | g1_mapping, Nav2 | map cloud (voxelised, ≤ 1500 pts per frame), path |
 | `map -> leo_odom -> leo_base` | TF | `leo_in_map` (`leo:=true`) | the Leo Rover from its sightings of the same wall tag + its odometry |

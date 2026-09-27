@@ -258,6 +258,24 @@ def test_goals_and_estop_from_the_glasses_are_refused():
     run(session(t, SimWorld()))
 
 
+def test_replies_from_ros_reach_the_glasses_before_registration():
+    """/ar_glasses/reply (e.g. semantic_query: "Found red cup") -> the Lens's assistant panel."""
+    class ReplyWorld(SimWorld):
+        def __init__(self):
+            super().__init__()
+            self.replies = ["Searching for red cup…", "Found red cup (0.71)."]
+
+        def pop_replies(self):
+            out, self.replies = self.replies, []
+            return out
+
+    async def t(lens, bridge):
+        texts = [(await lens.recv("agent_response"))["text"] for _ in range(2)]
+        assert texts == ["Searching for red cup…", "Found red cup (0.71)."]
+        assert bridge.committed is False
+    run(session(t, ReplyWorld()))
+
+
 def test_timeout_and_stop():
     cfg = BridgeConfig(tag_black_size_m=TAG, registration_timeout_s=0.5)
 

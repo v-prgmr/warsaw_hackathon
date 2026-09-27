@@ -19,6 +19,7 @@ Publishes, after registration:
 Never commands the robot: goals and e-stop from the glasses are refused (§19, §25).
 """
 import asyncio
+import collections
 import json
 import queue
 import threading
@@ -64,6 +65,7 @@ class RosWorld(World):
         self._points = np.zeros((0, 3))
         self._path = []
         self._markers = {}
+        self._replies = collections.deque(maxlen=20)
         self.outbox = queue.SimpleQueue()     # messages for the ROS thread to publish
         self.registered = False
 
@@ -113,6 +115,16 @@ class RosWorld(World):
         T_map_body = T_map_hmd.copy()
         T_map_body[:3, :3] = T_map_hmd[:3, :3] @ GL_TO_BODY
         self.outbox.put(("hmd", T_ar_body, T_map_body))
+
+    def pop_replies(self):
+        with self.lock:
+            out = list(self._replies)
+            self._replies.clear()
+        return out
+
+    def on_reply(self, msg):
+        with self.lock:
+            self._replies.append(str(msg.data))
 
     def on_user_command(self, text):
         self.outbox.put(("user_command", text, None))
@@ -188,6 +200,9 @@ class ArBridgeNode(Node):
                                  self.world.on_markers, 10)
         self.cmd_pub = self.create_publisher(
             String, p("user_command_topic", "/ar_glasses/user_command").value, 10)
+        # replies for the glasses' assistant panel (e.g. semantic_query: "Found red cup")
+        self.create_subscription(String, p("reply_topic", "/ar_glasses/reply").value,
+                                 self.world.on_reply, 10)
         self.hmd_pub = self.create_publisher(
             PoseStamped, p("hmd_pose_topic", "/ar_glasses/hmd_pose").value, 10)
         self.status_pub = self.create_publisher(

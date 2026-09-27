@@ -220,7 +220,9 @@ async def lens_session():
                    skill="get_user_hmd_transform", data={"position": pos, "orientation": quat})
         await send(type="user_command", text="find the red bottle")
         await recv("agent_response")
-        await recv("ar_skill", where=lambda m: m["skill"] == "draw_world_annotation")
+        # the bridge draws each annotation once; it may have arrived while we waited above
+        if not any(m["skill"] == "draw_world_annotation" for m in out["skills"]):
+            await recv("ar_skill", where=lambda m: m["skill"] == "draw_world_annotation")
         await asyncio.sleep(1.0)
     return out
 

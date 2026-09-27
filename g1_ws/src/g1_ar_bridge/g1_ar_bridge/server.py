@@ -300,7 +300,7 @@ class ArBridgeServer:
                     "manual_placement", "Drag the marker onto the robot, then Complete", mode))
             elif mode == "april_tag":
                 self.session = {"mode": mode, "started": time.monotonic(), "views": 0,
-                                "frames": 0, "last_status": 0.0, "visible": False,
+                                "frames": 0, "last_status": time.monotonic(), "visible": False,
                                 "est": TagPoseEstimator(
                                     self.cfg.tag_black_size_m,
                                     max_reproj_px=self.cfg.max_view_reproj_px),
@@ -685,6 +685,8 @@ class ArBridgeServer:
     async def tick(self, tick, lidar_every, hmd_every):
         if not self.clients:
             return
+        for text in self.world.pop_replies():
+            await self.broadcast(P.agent_response(text))
         await self.tag_session_tick()
         if not self.committed:
             return
