@@ -1482,7 +1482,9 @@ Decided 2026-09-26 (team request): a person wearing **Snap Spectacles (2024)** s
 knows, in place in the room: the robot, its path, the LiDAR map, and semantic POIs / 3D boxes
 (M4 output). Session setup and one-command launcher: `ar_glasses/SETUP.md`,
 `scripts/start_ar_glasses.sh` (refuses a second TF/map owner; `--bridge-only` next to the
-navigation laptop). Guides: `ar_glasses/README.md` (glasses, Windows / Ubuntu) and
+navigation laptop). **Next steps / design notes: `ar_glasses/IDEAS.md`** (semantic POIs in the
+glasses, plan-only then team-approved goals from the glasses, intent / safety views); goals from
+the glasses stay off until the team decides (§19, §25). Guides: `ar_glasses/README.md` (glasses, Windows / Ubuntu) and
 `g1_ws/src/g1_ar_bridge/README.md` (bridge); hand-out for the robot laptop:
 `ar_glasses/UBUNTU_BRIDGE_SETUP.txt`.
 
