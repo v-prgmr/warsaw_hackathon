@@ -24,7 +24,7 @@ Usage: bash scripts/start_g1_navigation.sh [options]
 Opens one window each for the G1's direct RViz navigation on the RTAB-Map map:
   G1 1  robot TF (g1_sensors tf_chain)        G1 4  Nav2 (dry run, or --live)
   G1 2  map (g1_mapping, RTAB-Map)            G1 5  velocity monitor
-  G1 3  /scan (humanoid_nav_bridge)           G1 6  RViz with the "Nav2 Goal" tool
+  G1 3  /scan (humanoid_nav_bridge)           G1 6  RViz: session + navigation in one
   G1 7  checks shell (check_rtabmap_plan)
   --live: also  G1 L1  Loco SDK client   G1 L2  cmd_vel_gateway   -> the robot WALKS
 
@@ -111,7 +111,10 @@ fi
 # The Unitree SDK brings its own CycloneDDS 0.10.2: no ROS library path, no ROS DDS config (AGENTS.md §5).
 CMD_CLIENT="env -u LD_LIBRARY_PATH -u CYCLONEDDS_URI stdbuf -oL -eL $CLIENT --network-interface=$NIC --enabled=true --i-accept-high-level-actuation=true"
 CMD_GATEWAY="ros2 run g1_loco_cmdvel cmd_vel_gateway --ros-args -p enabled:=true -p require_battery:=true -p battery_topic:=/battery_state -p min_battery_percent:=0.20 -p battery_timeout_sec:=1.0 -p command_timeout_sec:=0.30 -p max_vx:=$MAX_VX -p max_vy:=$MAX_VX -p max_wz:=$MAX_WZ"
-CMD_RVIZ='rviz2 -d "$(ros2 pkg prefix g1_nav2)/share/g1_nav2/rviz/g1_nav_minimal.rviz"'
+# One RViz for the session and the navigation (maps, camera, object search, glasses markers,
+# costmaps, /plan, /scan, frontiers, Nav2 Goal tool); joined to a session it replaces the session's.
+CMD_RVIZ='rviz2 -d "$(ros2 pkg prefix g1_nav2)/share/g1_nav2/rviz/g1_session_nav.rviz"'
+RVIZ_PAT='^[^ ]*rviz2 -d [^ ]*(g1_session|g1_session_nav)\.rviz'   # session's or a leftover one
 CMD_CHECKS='cat <<EOF
 Checks (shell with ROS + rl_hnav sourced):
   ros2 run g1_nav2 check_rtabmap_plan        TF, /scan, costmaps, battery, a test path -> READY?
@@ -132,7 +135,7 @@ if $PRINT_ONLY; then
   fi
   say "[G1 4 - Nav2 $($LIVE && echo LIVE || echo 'dry run')]"; echo "$CMD_NAV"
   say "[G1 5 - velocity monitor]"; echo "$CMD_MON"
-  $RVIZ && { say "[G1 6 - RViz goals]"; echo "$CMD_RVIZ"; }
+  $RVIZ && { say "[G1 6 - RViz: session + navigation]"; echo "$CMD_RVIZ"; }
   say "[G1 7 - checks]"; echo "ros2 run g1_nav2 check_rtabmap_plan"
   exit 0
 fi
@@ -164,7 +167,7 @@ if [[ $RUNNER == docker ]]; then
   fi
   if $ATTACH; then
     TARGET=$SESSION_CONTAINER
-    docker exec "$TARGET" pgrep -f 'g1_nav2|humanoid_nav_bridge|cmd_vel_gateway|g1_loco_client' >/dev/null \
+    docker exec "$TARGET" pgrep -f '^[^ ]*python3 [^ ]*/ros2 (launch (g1_nav2|humanoid_nav_bridge)|run (g1_nav2|g1_loco_cmdvel)) |^[^ ]*/(cmd_vel_gateway|g1_loco_client)( |$)' >/dev/null \
       && die "navigation already runs inside $TARGET. Stop it first: bash scripts/stop_g1_navigation.sh"
     for what in tf_chain.launch.py mapping.launch.py; do
       docker exec "$TARGET" pgrep -f "ros2 launch .*$what" >/dev/null \
@@ -307,7 +310,11 @@ else
   open_window 'G1 4 - Nav2 dry run (no motion)' "$CMD_NAV"
 fi
 open_window 'G1 5 - velocity monitor' "$CMD_MON"
-$RVIZ && open_window 'G1 6 - RViz goals' "$CMD_RVIZ"
+if $RVIZ && $ATTACH; then          # one RViz: the unified one replaces the session's
+  docker exec "$TARGET" pkill -INT -f "$RVIZ_PAT" \
+    && echo "closed the session's RViz (G1 4): G1 6 shows the session and the navigation" || true
+fi
+$RVIZ && open_window 'G1 6 - RViz: session + navigation' "$CMD_RVIZ"
 open_window 'G1 7 - checks' "$CMD_CHECKS"
 
 $ATTACH || printf '\nMap database: %s\n' "$DB"

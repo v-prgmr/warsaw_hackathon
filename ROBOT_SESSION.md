@@ -171,6 +171,12 @@ RViz shows the same.
 | 3D map | `/g1_mapping/cloud_map_3d` (`/cloud_map` is flat) |
 | 2D map, odometry, robot model, TF, LiDAR, frontiers | `/map`, `/odom`, `/robot_description`, … |
 
+With navigation (`scripts/start_g1_navigation.sh`, `start_g1_explore_navigation.sh`) there is one RViz
+for both: `g1_nav2/rviz/g1_session_nav.rviz` = this config + Nav2 costmaps, `/plan`, footprint, `/scan`,
+`/explore/frontiers`, the **Nav2 Goal** tool and the Navigation 2 panel. Joined to this session, the
+navigation launcher closes G1 4's RViz and opens the unified one (G1 6); `stop_g1_navigation.sh`
+leaves it open for the session.
+
 Adding displays by hand: a display shows nothing when its QoS does not match the publisher. Camera
 images from the driver are Reliable (RViz's default works); the map clouds are latched (set
 **Durability Policy: Transient Local** if they stay empty).
