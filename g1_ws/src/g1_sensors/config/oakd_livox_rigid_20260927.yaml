@@ -1,0 +1,29 @@
+# Rigid OAK-D mount fitted against MID-360 after replacing the duct-tape mount.
+status: frozen_for_current_rigid_mount
+sensor_id: "OAK-D MXID 14442C102106F1D000"
+frames:
+  parent: camera_link
+  child: oak-d-base-frame
+  aligned_depth: oak_rgb_camera_optical_frame
+  lidar: livox_frame
+method: "joint trimmed point-to-point ICP from two stationary scenes; third scene held out"
+captures:
+  fit:
+    - oak_livox_geometry_20260927_112449
+    - oak_livox_geometry_20260927_112835
+  independent_holdout: oak_livox_geometry_20260927_113203
+report: oak_livox_geometry_20260927_112449/registration.yaml
+mount_transform:
+  translation_m: [0.22416789766938694, 0.07732376517840205, -0.19028409219064024]
+  rpy_rad: [0.1618505557767317, -0.6815597371866177, -0.10646407396852263]
+  quaternion_xyzw: [0.058355740711082, -0.3367102934643849, -0.023003841665398716, 0.9395166890853095]
+evaluation:
+  fit_windows: 14
+  holdout_windows: 7
+  holdout_cloud_median_m: "0.031-0.034 with old tape-mount seed; 0.032-0.034 with rigid-mount fit"
+  holdout_depth_ray_median_m: "0.029-0.032 with old tape-mount seed; 0.029-0.034 with rigid-mount fit"
+  holdout_depth_consistent_fraction: "0.81-0.83 with old tape-mount seed; 0.75-0.79 with rigid-mount fit"
+  caveat: "The seed belongs to a different physical mount; a better old-seed holdout score does not establish its correctness for the rigid mount. New fit is a provisional rigid-mount estimate, with ~3 cm holdout depth-ray error."
+runtime:
+  single_owner: g1_sensors/tf_chain.launch.py
+  recheck_if_mount_moves: true

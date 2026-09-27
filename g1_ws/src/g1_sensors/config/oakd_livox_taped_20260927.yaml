@@ -1,4 +1,4 @@
-# Reversible geometry estimate for the CURRENT taped OAK-D mount; do not reuse after it shifts.
+# Reversible geometry estimate for the OLD taped OAK-D mount; do not reuse after it shifts.
 status: taped_mount_provisional
 sensor_id: "OAK-D MXID 14442C102106F1D000"
 frames:
