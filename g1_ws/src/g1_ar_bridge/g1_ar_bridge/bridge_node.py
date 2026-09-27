@@ -186,6 +186,8 @@ class ArBridgeNode(Node):
             pose_hz=float(p("pose_hz", 10.0).value),
             lidar_hz=float(p("lidar_hz", 2.0).value),
             hmd_hz=float(p("hmd_hz", 2.0).value),
+            lidar_view_cone_deg=float(p("lidar_view_cone_deg", 55.0).value),
+            lidar_view_max_m=float(p("lidar_view_max_m", 8.0).value),
             record_dir=p("record_dir", "").value)
         self.world = RosWorld(self, self.map_frame, p("robot_frame", "robot_center").value,
                               p("tag_frame_prefix", "ar_tag_").value, cfg.base_height_m,

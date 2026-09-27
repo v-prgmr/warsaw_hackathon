@@ -135,7 +135,7 @@ python3 -m g1_ar_bridge.replay_registration <dir> --overlays /tmp/ov      # anno
 | `/ar_glasses/user_command` | String out | `ar_bridge` | voice / typed commands from the glasses |
 | `/ar_glasses/reply` | String in | any node (e.g. `semantic_query`) | text shown in the glasses' assistant panel ("Found red cup …"), even before registration |
 | `/ar_glasses/status`, `/ar_glasses/anchor_status` | String (JSON) | both nodes | registration and anchor state |
-| `/cloud_map`, `/plan` | in | g1_mapping, Nav2 | map cloud (voxelised, ≤ 1500 pts per frame), path |
+| `/cloud_map`, `/plan` | in | g1_mapping, Nav2 | map cloud (voxelised; LiDAR *full*: only the part within `lidar_view_cone_deg` of where the glasses look, ≤ 1500 pts per frame), path |
 | `map -> leo_odom -> leo_base` | TF | `leo_in_map` (`leo:=true`) | the Leo Rover from its sightings of the same wall tag + its odometry |
 | `/leo_in_g1/status` | String (JSON) | `leo_in_map` | relay, sightings, rejections, Leo's pose in `map` |
 | UDP 8791 | in | `leo_relay` on Leo | Leo's tag detection (`leo_oak_rgb_camera_optical_frame -> leo_tag0`) and `/leo/merged_odom`, JSON |

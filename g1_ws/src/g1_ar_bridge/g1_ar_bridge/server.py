@@ -62,6 +62,12 @@ class BridgeConfig:
     lidar_obstacle_cap: int = P.LIDAR_OBSTACLE_CAP
     lidar_min_height_m: float = 0.05              # above the floor: hides the floor itself
     lidar_max_height_m: float = 2.2
+    # "full" LiDAR: send only the points within this angle of where the glasses look, so the
+    # per-frame cap goes to what is in view (display ~46 deg diagonal; the rest is margin for
+    # head turns between glasses-pose polls). 0 = whole map.
+    lidar_view_cone_deg: float = 55.0
+    lidar_view_max_m: float = 8.0
+    lidar_view_max_age_s: float = 2.0             # older glasses pose: send the whole map
     status_period_s: float = 2.0                  # registration heartbeat (Lens times out 10 s)
     record_dir: str = ""                          # record AprilTag registrations here ("" = off)
 
@@ -620,11 +626,26 @@ class ArBridgeServer:
                 pts = pts[(d >= lo) & (d <= hi + 1.0)]
             cap = self.cfg.lidar_obstacle_cap
         else:
+            pts = self.cull_to_view(pts)
             cap = self.cfg.lidar_full_cap
         if len(pts) > cap:
             idx = np.random.default_rng(len(pts)).choice(len(pts), cap, replace=False)
             pts = pts[np.sort(idx)]
         return transform_points(self.T_ar_map, pts)
+
+    def cull_to_view(self, pts):
+        """Map points within ``lidar_view_cone_deg`` of the glasses' view direction and
+        ``lidar_view_max_m`` of the glasses; all points while no fresh glasses pose is known."""
+        cfg = self.cfg
+        if (cfg.lidar_view_cone_deg <= 0 or self.last_hmd is None
+                or time.monotonic() - self.last_hmd[2] > cfg.lidar_view_max_age_s):
+            return pts
+        T_map_hmd = self.last_hmd[0]
+        eye, forward = T_map_hmd[:3, 3], -T_map_hmd[:3, 2]   # the Lens camera looks along -Z
+        d = pts - eye
+        dist = np.linalg.norm(d, axis=1)
+        inside = d @ forward >= math.cos(math.radians(cfg.lidar_view_cone_deg)) * dist
+        return pts[inside & (dist <= cfg.lidar_view_max_m)]
 
     async def send_path(self):
         waypoints = self.world.path() or []

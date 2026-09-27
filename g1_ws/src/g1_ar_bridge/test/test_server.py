@@ -326,3 +326,22 @@ def test_camera_frame_parsing_rejects_garbage():
     pts = np.array([[0.5, 1.0, -2.0], [np.nan, 0, 0], [1e6, 0, 0]])
     assert np.allclose(P.decode_lidar(P.encode_lidar(pts)), [[0.5, 1.0, -2.0]], atol=1e-3)
     assert pose_to_T([0, 0, 0], [0, 0, 0, 1]).shape == (4, 4)
+
+
+def test_lidar_full_is_culled_to_the_glasses_view():
+    server = ArBridgeServer(SimWorld(), BridgeConfig(tag_black_size_m=TAG))
+    pts = np.array([[3.0, 0.0, 1.0],     # ahead
+                    [3.0, 1.0, 1.0],     # 18 deg off the view axis
+                    [0.0, 3.0, 1.0],     # 90 deg to the side
+                    [-3.0, 0.0, 1.0],    # behind
+                    [12.0, 0.0, 1.0]])   # ahead, beyond lidar_view_max_m
+    assert len(server.cull_to_view(pts)) == 5          # no glasses pose yet: whole map
+    # glasses at (0, 0, 1) in map, looking along map +x: the Lens camera's -Z axis is map +x
+    R = np.array([[0.0, 0.0, -1.0], [-1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    server.last_hmd = (make_T(R, [0.0, 0.0, 1.0]), None, time.monotonic())
+    assert server.cull_to_view(pts).tolist() == pts[:2].tolist()
+    server.last_hmd = (server.last_hmd[0], None, time.monotonic() - 10.0)   # stale pose
+    assert len(server.cull_to_view(pts)) == 5
+    server.cfg.lidar_view_cone_deg = 0.0                                    # culling off
+    server.last_hmd = (server.last_hmd[0], None, time.monotonic())
+    assert len(server.cull_to_view(pts)) == 5

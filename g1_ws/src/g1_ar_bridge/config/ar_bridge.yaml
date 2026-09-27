@@ -27,6 +27,9 @@ ar_bridge:
     pose_hz: 10.0
     lidar_hz: 2.0
     hmd_hz: 2.0                   # glasses pose polls (get_user_hmd_transform)
+    lidar_view_cone_deg: 55.0     # LiDAR "full": only map points within this angle of the
+                                  # glasses' view (display ~46 deg diagonal); 0 = whole map
+    lidar_view_max_m: 8.0         # ... and within this distance of the glasses
     cloud_topic: /cloud_map       # RTAB-Map map cloud (g1_mapping)
     cloud_voxel_m: 0.08
     cloud_max_points: 30000       # kept in memory; <= 1500 go to the glasses per frame
