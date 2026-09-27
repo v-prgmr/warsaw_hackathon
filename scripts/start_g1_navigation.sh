@@ -247,7 +247,9 @@ end = time.time() + 4.0
 while time.time() < end:
     rclpy.spin_once(n, timeout_sec=0.2)
 c = n.count_publishers
-print(c("/tf") + c("/map"), c("/scan"), c("/cmd_vel") + n.count_subscribers("/cmd_vel"))
+# the OAK-D driver (Orin) publishes its camera frames on /tf: not a robot TF/map owner
+tf = [i for i in n.get_publishers_info_by_topic("/tf") if not i.node_name.startswith("oak")]
+print(len(tf) + c("/map"), c("/scan"), c("/cmd_vel") + n.count_subscribers("/cmd_vel"))
 EOF' 2>/dev/null | tail -1) || probe="0 0 0"
 read -r tf_map scan cmd_vel <<<"${probe:-0 0 0}"
 if ! $ATTACH && ((tf_map > 0)); then
