@@ -60,13 +60,15 @@ starts a Docker container and opens one window each for:
 
 | Window | What |
 |---|---|
-| AR 0 (with `--orin`) | SSH to the Orin, starts the OAK-D driver; **type the Orin password** there |
+| AR 0 (with `--orin`) | SSH to the Orin, starts the OAK-D driver in DDS domain 78; **type the Orin password** there |
+| OAK relay (with `--orin`) | copies the OAK-D topics from domain 78 into the robot's domain 0 (the driver segfaults on 0) |
 | AR 1 | robot TF (`g1_sensors tf_chain`: URDF, joints, OAK-D mount calibration) |
 | AR 2 | map (`g1_mapping`, RTAB-Map) |
 | AR 3 | the glasses bridge + the robot's tag measurement (`g1_ar_bridge`) + the demo scene |
 | AR 4 | checks (`/ar_glasses/anchor_status`) |
+| AR 7 (with `--search`) | object search: Grounding DINO + SAM2 in the GPU container `g1-search` |
 
-Options: `--no-demo` (no virtual table / green box), `--camera realsense`, `--nic <iface>`, `--build` (rebuild first), `--print-only` (show
+Options: `--search` (object search, §4), `--no-demo` (no virtual table / green box), `--camera realsense`, `--nic <iface>`, `--build` (rebuild first), `--print-only` (show
 the commands only), and **`--bridge-only`** when another laptop already runs TF + map (e.g.
 `scripts/start_g1_navigation.sh`): the script refuses to start a second TF/map owner, which
 would make TF jump (AGENTS.md §6). Stop with `bash scripts/stop_ar_glasses.sh`.
@@ -106,13 +108,18 @@ ros2 launch g1_mapping mapping.launch.py static_tf:=false                       
 ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=0.16 camera:=oak    # T3
 ros2 topic echo /ar_glasses/anchor_status                                          # T4
 ```
-OAK-D driver on the Orin (domain **0** for the glasses; the OAK/LiDAR calibration capture uses 78):
+OAK-D driver on the Orin in DDS domain **78**: on the robot's domain 0 the Orin's Foxy driver
+segfaults at start (Unitree's own DDS traffic, AGENTS.md §5, §7):
 ```bash
 ssh unitree@192.168.123.164
 source /opt/ros/foxy/setup.bash
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp ROS_DOMAIN_ID=0
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp ROS_DOMAIN_ID=78
 export CYCLONEDDS_URI='<CycloneDDS><Domain Id="any"><General><NetworkInterfaceAddress>eth0</NetworkInterfaceAddress><AllowMulticast>spdp</AllowMulticast></General></Domain></CycloneDDS>'
-ros2 launch depthai_ros_driver camera.launch.py use_rviz:=false
+ros2 launch depthai_ros_driver camera.launch.py use_rviz:=false      # wait for "Camera ready!"
+```
+and, in a fifth container terminal, the relay that copies its topics into domain 0:
+```bash
+ros2 run g1_sensors oak_domain_relay          # domain 78 -> 0, images at <= 10 Hz
 ```
 
 ### End
@@ -129,14 +136,37 @@ Ctrl-C the OAK-D driver on the Orin. Never `kill -9` a `ros2 launch` (AGENTS.md 
 | Script: "no 192.168.123.x address" / Orin does not answer | cable, robot on, the `ip addr add` commands above |
 | Script: "someone already publishes /tf or /map" | another laptop runs TF + map: use `--bridge-only`, or stop the other one |
 | AR 1: `waiting for clock_reference` | normal for ~2 s at start |
-| No `/oak/` topics | OAK-D driver on the Orin not running, or in the wrong domain (must be 0) |
+| No `/oak/` images (topics listed but nothing arrives) | the OAK-D driver on the Orin crashed or stalled: its window shows `Segmentation fault` on domain 0 (use 78 + the relay, as `--orin` does) or no new output after the robot was moved (Ctrl-C and start it again). `lsusb \| grep 03e7` on the Orin must list the camera |
+| AR 3 stays "searching" although the tag is in view | glare or sun on the tag (the black border must be intact), the tag cut off at the image edge, or too small (> 3 m away). Stand the G1 1–1.5 m in front of it, tag at chest height |
 | AR 3 stays "searching" | the robot camera does not see the tag: closer, facing it, light |
 | Registration never finishes | read the `waiting for:` line in AR 3. The glasses hide their text above 80 %; the bridge now keeps it below until it commits. Keep `bags/ar_registration/` and replay it: `python3 -m g1_ar_bridge.replay_registration bags/ar_registration` (in the container) |
 | "disagree on 'up'" | the robot camera's TF is wrong: check the OAK-D mount calibration |
 | Robot box offset from the robot | wrong `--tag-size`, the tag moved, or the (taped) OAK-D mount shifted: re-measure the calibration (`g1_sensors` README, OAK-D ↔ LiDAR) |
 | Dimensional OS missing from Drafts | redeploy from Lens Studio ([`README.md`](README.md) Part 1) |
 
-## 4. With the Leo Rover too (shared world)
+## 4. Search for objects ("red cup") and mark them
+
+`--search` adds the object search (package `semantic_query`, Grounding DINO + SAM2 on the chest
+OAK-D). It runs in its own GPU container (`g1-search`, image `g1-semantic`):
+```bash
+docker build -t g1-semantic -f docker/Dockerfile.semantic .      # once, with internet (~6 GB of CUDA libs)
+bash scripts/start_ar_glasses.sh --tag-size 0.16 --orin --search
+```
+1. Wait until window AR 7 says `poi_node up (…, device=cuda)` (the first start downloads the
+   models, ~1 GB, into `bags/hf_cache`).
+2. In the glasses' text box type **`red cup`** (or "search for a red cup", "where is my bottle?").
+   The glasses answer "Searching for red cup…", and "searching: red cup" floats above the robot.
+3. The robot checks new chest-camera frames for up to 20 s (~1 s per frame on an RTX GPU). Turn
+   it towards the object. When found: a **green 3D box with the label** on the real object and
+   "Found red cup (0.71), 1.8 m from the robot. Box 8 x 8 x 11 cm." Otherwise "No red cup found".
+4. `stop` stops a search, `clear` removes the boxes. The POI (label, box, confidence, frame
+   `map`) is on `/semantic_query/poi` for the Leo handoff; `/semantic_query/image` shows the 2D
+   box and mask (RViz).
+
+Without the glasses: `ros2 topic pub --once /semantic_query/query std_msgs/msg/String "{data: 'red cup'}"`.
+Details: [`g1_ws/src/semantic_query/README.md`](../g1_ws/src/semantic_query/README.md).
+
+## 5. With the Leo Rover too (shared world)
 
 The same wall tag also places the **Leo Rover** in the G1 map, and the glasses mark it as a blue
 box with a heading line and a "Leo Rover" label (details and status:
@@ -156,7 +186,7 @@ box with a heading line and a "Leo Rover" label (details and status:
    `config/ar_bridge.yaml`): expect an offset of about the camera's distance from Leo's centre
    until it is measured.
 
-## 5. Useful extras
+## 6. Useful extras
 - **Home test without the robot** (real glasses, tag on your wall, fake robot):
   `SIM=1 scripts/run_humble.sh`, then
   `ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=0.16 fake_robot:=true`.

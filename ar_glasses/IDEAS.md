@@ -25,7 +25,7 @@ green box, "red bottle") shows the POI look (`demo_pois:=true`).
 
 | # | Idea | Moves the robot? | Needs | Effort |
 |---|---|---|---|---|
-| 1 | "Find the red bottle" → box on the real object | no | `semantic_query` (M4) | medium–large |
+| 1 | "Find the red bottle" → box on the real object | no | **built** (`semantic_query`, `--search`); tune on real scenes | done, tuning |
 | 2 | Point-to-go: goal from the glasses → Nav2 | plan-only: no; execute: **yes** | bridge change; live = team decision | small (plan) / medium (execute) |
 | 3 | See what the robot is thinking (path, frontiers, safe zone, status) | no | small nodes | small |
 | 4 | Calibration / validation views (TF axes, camera frustum, measuring) | no | small node; measuring needs a point picker | small–medium |
@@ -40,6 +40,15 @@ Suggested order for the demo: **3 → 2 (plan-only) → 1**, then 2 (execute) if
 **Goal.** The wearer says or types "red bottle". The robot finds it in its chest camera and a
 labelled 3D box appears **on the real object** in the room. This is the M4 output (AGENTS.md §12,
 §16) and exactly what Leo gets in the handoff (M6), so it shows "the robot understands the room".
+
+**Status (2026-09-27): built.** `semantic_query` (Inko's Grounding DINO + SAM2 node) now searches:
+a query typed in the glasses (or on `/semantic_query/query`) runs on new chest-OAK-D frames for up
+to 20 s, and a found object gets a gravity-aligned **3D box + label** in the glasses (SAM2 mask +
+aligned depth → points in `map`), replies on `/ar_glasses/reply`, the POI on
+`/semantic_query/poi`. Runs on the laptop GPU (RTX 5070, ~1 s per frame) in the `g1-semantic`
+container: `scripts/start_ar_glasses.sh --search`, `ar_glasses/SETUP.md` §4. Still to do: tune
+`min_confidence` / thresholds on real scenes, multi-view fusion, more than one object per query.
+The design notes below stay as the reference.
 
 **Already there**
 - Input: the Lens's voice / text box → `/ar_glasses/user_command` (`std_msgs/String`). The bridge
