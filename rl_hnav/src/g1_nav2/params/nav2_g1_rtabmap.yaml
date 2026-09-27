@@ -74,7 +74,10 @@ controller_server:
       rotate_to_heading_angular_vel: 0.20   # = cmd_vel_gateway max_wz (launch arg max_wz)
       use_rotate_to_heading: true
       rotate_to_heading_min_angle: 0.5
-      max_angular_accel: 1.0
+      # Measured G1 turning threshold: 0.11 rad/s. RPP limits rotation relative
+      # to measured yaw rate each cycle: 3.2 / 20 Hz = 0.16 rad/s from rest.
+      # The old 1.0 / 20 = 0.05 could stay below the threshold indefinitely.
+      max_angular_accel: 3.2
       allow_reversing: false                # the G1 does not walk backwards
       lookahead_dist: 0.6
       min_lookahead_dist: 0.3
@@ -107,7 +110,7 @@ behavior_server:
       plugin: "nav2_behaviors/Wait"
     simulate_ahead_time: 2.0
     max_rotational_vel: 0.20   # = cmd_vel_gateway max_wz (launch arg max_wz)
-    min_rotational_vel: 0.05
+    min_rotational_vel: 0.11   # measured minimum effective in-place turn rate
     rotational_acc_lim: 0.4
 
 # -----------------
@@ -147,7 +150,7 @@ global_costmap:
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.55
+        inflation_radius: 0.30
         cost_scaling_factor: 3.0
 
 local_costmap:
@@ -181,7 +184,7 @@ local_costmap:
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.55
+        inflation_radius: 0.30
         cost_scaling_factor: 3.0
 
 waypoint_follower:
@@ -199,8 +202,10 @@ velocity_smoother:
     odom_topic: /odom
     max_velocity: [0.10, 0.0, 0.20]    # = cmd_vel_gateway clamps (launch args max_vx / max_wz)
     min_velocity: [0.0, 0.0, -0.20]    # no reversing
-    max_accel: [0.5, 0.0, 1.0]
-    max_decel: [-0.5, 0.0, -1.0]
+    # Match RPP yaw acceleration so smoothing does not prolong sub-threshold turns.
+    # Zero remains valid; no minimum yaw clamp on curved forward paths.
+    max_accel: [0.5, 0.0, 3.2]
+    max_decel: [-0.5, 0.0, -3.2]
     # Zero once when no Nav2 command arrives for this long; cmd_vel_gateway's own watchdog also
     # stops the robot 0.30 s after the last /cmd_vel.
     velocity_timeout: 1.0

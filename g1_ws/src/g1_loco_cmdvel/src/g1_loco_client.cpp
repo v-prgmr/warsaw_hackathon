@@ -176,8 +176,8 @@ int main(int argc, char **argv)
         packet.magic == g1_loco_cmdvel::kVelocityPacketMagic) {
       const auto age_ns = steady_ns() - static_cast<std::int64_t>(packet.sent_steady_ns);
       if (!std::isfinite(packet.vx) || !std::isfinite(packet.vy) || !std::isfinite(packet.wz) ||
-          std::abs(packet.vx) > 0.10F || std::abs(packet.vy) > 0.05F ||
-          std::abs(packet.wz) > 0.20F || packet.sent_steady_ns == 0 ||
+          std::abs(packet.vx) > 0.50F || std::abs(packet.vy) > 0.50F ||
+          std::abs(packet.wz) > 1.0F || packet.sent_steady_ns == 0 ||
           age_ns < -100'000'000 || age_ns > 300'000'000) {
         std::cerr << "Rejected out-of-range or stale velocity packet\n";
         if (active_velocity) stop_motion();

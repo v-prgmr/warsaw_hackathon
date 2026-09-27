@@ -14,19 +14,35 @@ This package intentionally defaults to no actuation:
 - The SDK client logs received commands and only calls `SetVelocity` after the
   explicit `--enabled=true --i-accept-high-level-actuation=true` opt-in.
 - Even when enabled, the SDK client independently subscribes to the raw Unitree
-  `rt/lf/bmsstate` stream, requires fresh SOC >= 20%, clamps every packet,
+  `rt/lf/bmsstate` stream, requires fresh SOC >= 20%, validates every packet,
   calls `StopMove` after 0.30 s without a command or on BMS loss, and stops on
   SIGINT/SIGTERM. The client never accepts a ROS battery parameter as a bypass.
 
 ## Build
 
+SDK packet ceilings were increased at the operator's request on 2026-09-27:
+`|vx| <= 0.50 m/s`, `|vy| <= 0.50 m/s`, `|wz| <= 1.0 rad/s`.
+The SDK client rejects packets above these ceilings (it does not clip them).
+Gateway defaults remain 0.10 / 0.05 / 0.20; tighter launch limits still apply.
+Battery and 0.30 s packet-age checks remain mandatory. These ceilings are not
+a hardware validation: the reported intermittent API timeout 3104 is a
+separate unresolved issue. Rebuilding does not update an already running client.
+
 ```bash
 cd ~/workspace/warsaw/g1_ws
 source /opt/ros/humble/setup.bash
-export UNITREE_SDK_ROOT=~/workspace/warsaw/rl_hnav/src/rl_sar/src/rl_sar/library/thirdparty/robot_sdk/unitree/unitree_sdk2
-colcon build --packages-select g1_loco_cmdvel
+export UNITREE_SDK_ROOT=~/workspace/warsaw/third_party/unitree_sdk2
+colcon build --packages-select g1_loco_cmdvel --cmake-args -DUNITREE_SDK_ROOT="$UNITREE_SDK_ROOT"
 source install/setup.bash
 ```
+
+Use the root `third_party/unitree_sdk2` G1 client: its G1 Loco service name is
+`sport`. The older SDK nested in `rl_sar` targets `loco`, which was absent on
+the robot's DDS graph and caused API timeout 3104. A getter-only probe using
+the root SDK returned `GetFsmId=0` (success), FSM ID 802, on 2026-09-27.
+This verifies API connectivity, not walking or stopping. The explicit CMake
+argument above replaces the old SDK path even in an existing build cache.
+This remains the **G1 Loco client**, not the Go2 Sport client.
 
 To check the Unitree SDK's own battery channel **read-only**, with Ethernet
 connected and no locomotion process running:

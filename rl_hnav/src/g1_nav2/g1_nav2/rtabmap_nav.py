@@ -18,6 +18,10 @@ from launch_ros.actions import Node
 # badly, and a 1.0 rad/s spin recovery at 0.2 rad/s outlasts its time allowance.
 GATEWAY_MAX_VX = 0.10  # m/s
 GATEWAY_MAX_WZ = 0.20  # rad/s
+# Operator-requested ceilings for the multi-terminal bringup. Preserve the
+# standalone defaults above; the script sets both Nav2 and gateway limits.
+NAV_MAX_VX = 0.50  # m/s; matches SDK hard ceiling
+NAV_MAX_WZ = 1.0  # rad/s; matches SDK hard ceiling
 
 LIFECYCLE_NODES = [
     'controller_server', 'smoother_server', 'planner_server',
@@ -38,12 +42,12 @@ EXECUTABLES = [
 def speed_limits(max_vx, max_wz):
     """Parse and check the launch speed limits: positive and within the gateway clamps."""
     max_vx, max_wz = float(max_vx), float(max_wz)
-    if not 0.0 < max_vx <= GATEWAY_MAX_VX:
+    if not 0.0 < max_vx <= NAV_MAX_VX:
         raise ValueError(
-            f'max_vx must be in (0, {GATEWAY_MAX_VX}] m/s (cmd_vel_gateway clamp), got {max_vx}')
-    if not 0.0 < max_wz <= GATEWAY_MAX_WZ:
+            f'max_vx must be in (0, {NAV_MAX_VX}] m/s; match the gateway limit, got {max_vx}')
+    if not 0.0 < max_wz <= NAV_MAX_WZ:
         raise ValueError(
-            f'max_wz must be in (0, {GATEWAY_MAX_WZ}] rad/s (cmd_vel_gateway clamp), got {max_wz}')
+            f'max_wz must be in (0, {NAV_MAX_WZ}] rad/s; match the gateway limit, got {max_wz}')
     return max_vx, max_wz
 
 
@@ -60,7 +64,8 @@ def speed_overrides(max_vx, max_wz):
         },
         'behavior_server': {
             'max_rotational_vel': max_wz,
-            'min_rotational_vel': min(0.05, max_wz),
+            # Preserve explicitly lower launch ceilings for command-only tests.
+            'min_rotational_vel': min(0.11, max_wz),
         },
     }
 
