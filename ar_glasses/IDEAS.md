@@ -29,7 +29,7 @@ green box, "red bottle") shows the POI look (`demo_pois:=true`).
 | 2 | Point-to-go: goal from the glasses → Nav2 | plan-only: no; execute: **yes** | bridge change; live = team decision | small (plan) / medium (execute) |
 | 3 | See what the robot is thinking (path, frontiers, safe zone, status) | no | small nodes | small |
 | 4 | Calibration / validation views (TF axes, camera frustum, measuring) | no | small node; measuring needs a point picker | small–medium |
-| 5 | Leo handoff view; "follow me" | handoff: no; follow: **yes** | Leo side; same rules as 2 | later |
+| 5 | Leo in the shared world (built, provisional); Leo handoff view; "follow me" | Leo view: no; follow: **yes** | Leo camera mount measured; same rules as 2 | started |
 
 Suggested order for the demo: **3 → 2 (plan-only) → 1**, then 2 (execute) if the team approves.
 
@@ -170,8 +170,15 @@ measured wall length agrees with the tape within ±5 cm or ±2 %.
 
 ---
 
-## 5. Later ideas
+## 5. Leo Rover in the shared world, and later ideas
 
+- **Leo in the shared world — built (2026-09-27), provisional.** The same wall tag places Leo in
+  the G1 `map` from Leo's own tag detections (`leo_relay` on Leo → UDP → `leo_in_map`: TF
+  `map -> leo_odom -> leo_base`; Leo's odometry carries it between sightings) and marks it in
+  the glasses (`ns: "leo"`: box, heading, label). Tested in simulation only. To finish: run it
+  with the real Leo, **measure Leo's camera mount** (`leo_camera_xyz`, `leo_camera_measured`),
+  check the pose against a tape measurement, then show Leo's own path / goal the same way.
+  Contract and status: `g1_ws/docs/leo_g1_laptop_integration.md`.
 - **Leo handoff view (M6):** show the handoff POI and Leo's planned route in the same `map`, so a
   person confirms the target in the glasses before Leo goes. Needs Leo's path in our frame
   (shared map frame, AGENTS.md M6).

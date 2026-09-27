@@ -1,6 +1,32 @@
 # G1 ↔ laptop ↔ Leo Rover integration
 
-This is the connection and frame contract for handing the G1 RTAB-Map scene to Leo without changing the Leo team's ROS publishers. It describes a proposed integration; the cross-robot bridge and localization publisher have **not** been implemented or validated yet. Do not publish motion commands as part of this integration.
+This is the connection and frame contract for handing the G1 RTAB-Map scene to Leo without changing the Leo team's ROS publishers. Do not publish motion commands as part of this integration.
+
+## Status (2026-09-27): one wall tag, three worlds
+
+The same physical AprilTag (`tag36h11` ID 0, black square 0.160 m) now links **three** frames: the G1 map, the AR glasses and Leo.
+
+```text
+                        wall AprilTag 36h11 ID 0 (0.160 m)
+            G1 chest OAK-D │        Spectacles │        Leo front OAK-D │
+                           ▼                   ▼                        ▼
+   tag_anchor: map -> ar_tag_0    ar_bridge: map -> ar_world    leo_in_map: map -> leo_odom -> leo_base
+                        (all in the G1 RTAB-Map `map` frame; the glasses draw Leo as a blue box)
+```
+
+| Step of this doc | Status | Where |
+| --- | --- | --- |
+| §3 anchor the tag in the G1 map | **implemented, tested on the G1** (1–2 px, ~1 cm stable) | `g1_ar_bridge` `tag_anchor`: static TF `map -> ar_tag_0` (this doc's `g1_map -> shared_tag0`; one owner) |
+| §4 place Leo in the G1 map | **implemented, tested in simulation only**; not yet run with the real Leo | `leo_relay` (on Leo, read-only) → UDP → `leo_in_map` (laptop): TF `map -> leo_odom -> leo_base`, `/leo_in_g1/status` |
+| Leo marked in the AR glasses | implemented (simulation) | `leo_in_map` → `/ar_glasses/markers` ns `leo` (box of Leo's size, heading line, label) |
+| §5 map transfer, Leo Nav2 | not started | — |
+
+Run it: `bash scripts/start_ar_glasses.sh --tag-size 0.16 --orin --leo` (`ar_glasses/SETUP.md`), or by hand: `ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=0.16 camera:=oak leo:=true` on the laptop and the relay on Leo (below). Known limits, all visible in `/leo_in_g1/status`:
+
+- **Leo's camera mount is not measured.** Default `leo_camera_xyz: [0, 0, 0]`, `leo_camera_rpy` = forward-looking, upside down (`config/ar_bridge.yaml`, `leo_in_map`). The position error is roughly the camera's offset from Leo's `base_link`; measure it with a tape and set `leo_camera_xyz` and `leo_camera_measured: true`.
+- **Tag axis convention:** detectors differ (z out of vs into the tag). `leo_in_map` checks, per sighting, that the tag's normal faces the camera and converts; `last_sighting.flipped_tag_convention` shows which one Leo's detector uses.
+- **Clocks:** the tag sighting and the odometry sample are matched on **Leo's** clock (both come from Leo), so the laptop↔Leo offset does not affect the pose; the published TF is stamped with laptop time.
+- **Network:** the relay needs the laptop on Leo's hotspot. With the glasses as well, **laptop Wi-Fi and glasses both join Leo's hotspot** (the G1 stays on the Ethernet cable); check that the hotspot lets clients reach each other.
 
 ## What is running now
 
@@ -51,11 +77,13 @@ In the G1 graph itself, `g1_mapping` remains the **only** owner of `map -> odom`
 
 ## 3. Anchor the stationary tag in the G1 map
 
-1. Run `g1_sensors tf_chain` and `g1_mapping` on the live G1 streams (or in isolated replay). Confirm the complete G1 camera TF chain and RTAB-Map map-frame pose. The G1 chest OAK-D topics/mount remain hardware-dependent: discover them; do not reuse Leo camera names.
+1. Run `g1_sensors tf_chain` and `g1_mapping` on the live G1 streams (or in isolated replay). Confirm the complete G1 camera TF chain and RTAB-Map map-frame pose. G1 chest OAK-D (verified 2026-09-26/27): `/oak/rgb/image_raw`, `/oak/rgb/camera_info`, `/oak/stereo/image_raw`, frame `oak_rgb_camera_optical_frame`; mount `camera_link -> oak-d-base-frame` from `g1_sensors/config/oakd_livox_taped_20260927.yaml`. Do not reuse Leo camera names.
 2. Detect the **same `tag36h11` ID 0, size 0.160 m** from G1 RGB and CameraInfo while G1 stands still and the tag is fixed. Give this G1 *observed-tag* frame a different name from Leo's `leo_tag0`.
 3. At the detection timestamp compute `T_g1_map_tag = T_g1_map_g1_camera × T_g1_camera_tag`. Validate repeated observations and freeze/publish a single `g1_map -> shared_tag0` anchor for that stationary tag. A tag moved after anchoring invalidates the anchor.
 
 The tag anchor should have one owner. Do not directly merge both detectors' tag TF frames: they represent observations from different cameras, not two independently owned map anchors. Log the timestamp, frame IDs, measured size and pose quality.
+
+*Implemented:* `ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=0.16 camera:=oak` runs `tag_anchor`, the single owner of the static TF `map -> ar_tag_0` (ArUco axes: x right, y up, z out of the wall). It uses only views taken while the camera's `map` pose is still, fits the wall plane in the aligned depth, logs views, reprojection error, distance and `tag_up_vs_map_up_deg`, and publishes `/ar_glasses/anchor_status`. Stand the G1 still 1–1.5 m in front of the tag for a few seconds. After a new mapping session (new `map`), anchor again.
 
 ## 4. Place Leo in the G1 map
 
@@ -72,7 +100,16 @@ T_g1_map_leo_odom = T_g1_map_leo_base
                   × inverse(T_leo_odom_leo_base)
 ```
 
-Here `T_A_B` maps coordinates expressed in frame B into frame A. The localization component (on the laptop or Leo) is the **sole** publisher of `g1_map -> leo_odom` in the exported tree. Leo's odometry remains the owner of `leo_odom -> leo_base`. Update the map/odom correction from accepted tag observations; do not overwrite Leo wheel odometry. Between sightings, Leo odometry propagates the pose and can drift. Check time synchronization between G1's `.161` clock, laptop and Leo before TF lookups; do not use latest-TF substitutions to conceal large stamp differences.
+*Implemented* as `leo_relay` + `leo_in_map` (`g1_ws/src/g1_ar_bridge`, math in `leo_localization.py`, tests `test_leo_localization.py`, `test_leo_ros.py`). The relay runs on Leo only while a session runs, sent inline over SSH (nothing installed), and only *reads* Leo's TF (`leo_oak_rgb_camera_optical_frame -> leo_tag0`) and `/leo/merged_odom`:
+
+```bash
+scp g1_ws/src/g1_ar_bridge/g1_ar_bridge/leo_relay.py pi@10.0.0.1:/tmp/g1_leo_relay.py
+ssh -t pi@10.0.0.1 'source /opt/ros/jazzy/setup.bash && python3 /tmp/g1_leo_relay.py --laptop-ip <laptop IP on Leo net>'
+# Leo TF on other topics: append  --ros-args -r /tf:=/leo/tf -r /tf_static:=/leo/tf_static
+```
+Use `ssh -t` (a terminal) so Ctrl-C or a dropped connection also stops the relay on Leo. `scripts/start_ar_glasses.sh --leo` does both steps in one window.
+
+Here `T_A_B` maps coordinates expressed in frame B into frame A. The localization component (on the laptop or Leo) is the **sole** publisher of `g1_map -> leo_odom` in the exported tree (implemented: `leo_in_map` publishes `map -> leo_odom` and `leo_odom -> leo_base` in the G1 graph; Leo's own frames and topics are untouched). Leo's odometry remains the owner of `leo_odom -> leo_base` (its data, republished unchanged under our frame names by `leo_in_map`; nothing is sent back to Leo). Update the map/odom correction from accepted tag observations; do not overwrite Leo wheel odometry. Between sightings, Leo odometry propagates the pose and can drift. Check time synchronization between G1's `.161` clock, laptop and Leo before TF lookups; do not use latest-TF substitutions to conceal large stamp differences.
 
 ## 5. Transfer the map separately
 
