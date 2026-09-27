@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>g1_ar_bridge</name>
+  <version>0.0.1</version>
+  <description>Snap Spectacles AR bridge (AGENTS.md §27): aligns the glasses with the RTAB-Map
+  map through one AprilTag seen by a robot camera and by the glasses, then streams the robot
+  pose, the LiDAR map, the Nav2 path and POIs / 3D boxes to the Dimensional OS Lens (protocol
+  v19, WebSocket :8787), and publishes the glasses' pose on /tf. Read-only towards the robot:
+  navigation goals and e-stop requests from the glasses are refused.</description>
+  <maintainer email="jgilaviles@gmail.com">Javgilavi</maintainer>
+  <license>BSD-3-Clause</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <!-- websockets >= 10 from pip (see the Dockerfile); Ubuntu 22.04's python3-websockets is 9.1 -->
+
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

@@ -1,0 +1,167 @@
+AR GLASSES + G1: FULL PROCEDURE ON THE UBUNTU LAPTOP (works offline on the robot's hotspot)
+============================================================================================
+QUICK WAY: bash scripts/start_ar_glasses.sh --tag-size 0.16 --orin   (guide: ar_glasses/SETUP.md)
+It does parts B2-B4 below for you (checks, container, windows) and prints the glasses IP.
+(repo v-prgmr/warsaw_hackathon, branch claude/ar-glasses. Background: g1_ws/src/g1_ar_bridge/README.md,
+ ar_glasses/README.md, OAKD_REALSENSE_TF.md, AGENTS.md sections 7, 10.1, 19, 27)
+
+WHAT HAPPENS
+------------
+  robot camera (chest OAK-D or head RealSense) sees the wall AprilTag -> tag_anchor -> TF map -> ar_tag_0
+  glasses (Dimensional OS Lens, "AprilTag" registration) see the same tag -> ar_bridge
+  ar_bridge combines both -> the glasses show the robot / LiDAR / POIs in place, and
+  TF map -> ar_world -> spectacles gives robot <-> glasses in ROS.
+Read-only: nothing here moves the robot.
+
+NETWORK DURING THE RUN (no internet):
+  laptop ETHERNET  -> robot (192.168.123.x): ROS topics (LiDAR, joints, cameras)
+  laptop Wi-Fi     -> robot hotspot (10.42.0.x) <- glasses Wi-Fi on the SAME hotspot
+  The glasses connect to the laptop's Wi-Fi IP (10.42.0.x), port 8787.
+  Wi-Fi alone does NOT carry the robot's ROS topics: keep the Ethernet cable in.
+
+
+=====================================================================
+PART A - DO THIS WHILE YOU STILL HAVE INTERNET (once)
+=====================================================================
+A1. Get the code:
+      cd ~/warsaw_hackathon            # wherever your clone is
+      git fetch origin
+      git checkout claude/ar-glasses
+      git pull
+      git log --oneline -1             # the newest claude/ar-glasses commit
+
+A2. Build the Docker image NOW (it installs websockets from the internet; offline it would fail):
+      SIM=1 scripts/run_humble.sh      # builds image g1-humble, opens a shell in it
+    Inside that shell, build the workspace, then leave:
+      cd /ws/g1_ws && colcon build && source install/setup.bash
+      # (if another package fails: colcon build --packages-select g1_ar_bridge g1_sensors g1_mapping)
+      ros2 pkg executables g1_ar_bridge      # must list ar_bridge, tag_anchor, publish_demo_pois
+      exit
+    (Offline, run_humble.sh reuses the cached image; do not change the Dockerfile after this.)
+
+A3. Print the AprilTag: family 36h11, ID 0, black square >= 15 cm (A4 page), keep the white
+    paper margin, glue flat on card. Measure the BLACK square with a ruler: e.g. 16.0 cm -> 0.16.
+
+A4b. (Recommended) The same ROS bridge as at the robot, with a FAKE robot and anchor (no robot,
+    glasses + laptop on any common Wi-Fi, tag on your wall):
+      SIM=1 scripts/run_humble.sh
+      ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=0.16 fake_robot:=true
+    If the glasses register here, the glasses side and the ROS path work.
+
+A4. (Optional) Quick check without robot, glasses + laptop on any common Wi-Fi:
+      cd ~/warsaw_hackathon/g1_ws/src/g1_ar_bridge
+      python3 -m pip install --user -r requirements-sim.txt
+      python3 -m g1_ar_bridge.sim_main --tag-size 0.16
+
+
+=====================================================================
+PART B - AT THE ROBOT (offline)
+=====================================================================
+B1. Place the tag
+    - chest OAK-D: tag on the wall at about chest height (~1.1 m).
+    - head RealSense (looks 48 deg down): tag LOW on the wall (~0.3-0.5 m) or flat on the floor
+      ~1 m in front of the robot.
+    Put the robot so it can stand 1-2 m in front of the tag, facing it.
+
+B2. Network on the laptop (host terminal, not Docker)
+    a) Ethernet to the robot. Find the interface name, give it a 192.168.123.x address:
+         ip -br link                                   # e.g. enp3s0 / enx...
+         sudo ip addr add 192.168.123.222/24 dev <ETH_IFACE>
+         sudo ip link set <ETH_IFACE> up
+         ping -c1 192.168.123.164                      # Orin must answer
+    b) Wi-Fi: connect to the ROBOT'S HOTSPOT (same one as the glasses). Note the laptop's Wi-Fi IP:
+         ip -4 addr show | grep 10.42.                 # e.g. 10.42.0.125  <- type this in the Lens
+    c) Firewall (only if ufw is active):  sudo ufw allow 8787/tcp
+    d) Clock sync to the robot (AGENTS.md section 7; needed for live TF):
+         sudo mkdir -p /etc/systemd/timesyncd.conf.d
+         printf '[Time]\nNTP=192.168.123.161\nFallbackNTP=\n' | sudo tee /etc/systemd/timesyncd.conf.d/g1-robot.conf
+         sudo systemctl restart systemd-timesyncd
+         timedatectl timesync-status                   # Server: 192.168.123.161
+
+B3. Start the robot camera ON THE ORIN (terminal "ORIN")
+    Chest OAK-D (preferred; see OAKD_REALSENSE_TF.md - its Foxy driver segfaulted on 2026-09-26,
+    so check it really publishes):
+         ssh unitree@192.168.123.164
+         source /opt/ros/foxy/setup.bash
+         export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+         export ROS_DOMAIN_ID=0
+         export CYCLONEDDS_URI='<CycloneDDS><Domain Id="any"><General><NetworkInterfaceAddress>eth0</NetworkInterfaceAddress><AllowMulticast>spdp</AllowMulticast></General></Domain></CycloneDDS>'
+         ros2 launch depthai_ros_driver camera.launch.py use_rviz:=false
+    If the OAK-D does not come up: use the head RealSense instead (start_realsense.md, on the Orin;
+    it stops the vendor video_hub_pc4 service first) and put the tag low / on the floor.
+
+B4. Laptop terminals. Terminal 1 starts the container; the others join the SAME container:
+      # Terminal 1 (host):
+      cd ~/warsaw_hackathon
+      ROBOT_IFACE=<ETH_IFACE> scripts/run_humble.sh
+      # Terminals 2, 3, 4 (host), each:
+      docker exec -it $(docker ps -q --filter ancestor=g1-humble | head -1) bash
+    Inside every container terminal first:
+      source /ws/g1_ws/install/setup.bash
+      ros2 topic list | grep -E 'cloud_livox|/oak/|/camera/'     # robot + camera topics visible?
+
+    Terminal 1 - robot TF (URDF, joints, glue frames incl. the OAK-D mount camera_link -> oak-d-base-frame):
+      ros2 launch g1_sensors tf_chain.launch.py
+    Terminal 2 - map (RTAB-Map; map -> odom -> robot_center):
+      ros2 launch g1_mapping mapping.launch.py static_tf:=false
+    Terminal 3 - the AR bridge + tag anchor (use YOUR black-square size):
+      ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=0.16 camera:=oak
+      #   head RealSense instead:  ... tag_black_size_m:=0.16 camera:=realsense
+    Terminal 4 - checks:
+      ros2 run tf2_ros tf2_echo map oak_rgb_camera_optical_frame   # (RealSense: camera_color_optical_frame)
+      ros2 topic echo /ar_glasses/anchor_status
+
+B5. Robot measures the tag
+    Stand the robot STILL, 1-2 m in front of the tag, facing it (vendor remote; nothing here moves it).
+    Wait until anchor_status shows "state": "anchored" (Terminal 3 logs
+    "anchored map -> ar_tag_0 ... 'depth': 'used'"). A few seconds. Then the robot may move.
+    If it stays "searching": is the tag in the camera image? "no_tf": is tf_chain + mapping running?
+
+B6. Glasses measure the tag
+    Glasses on the robot hotspot, no cable. Drafts -> Dimensional OS:
+      "Start Robot & Bridge" -> Next
+      "Connect" -> type the laptop's Wi-Fi IP from B2b (e.g. 10.42.0.125)  (Terminal 3: "Lens connected")
+      "Registration" -> press "AprilTag" -> look at the tag from 1-1.5 m, step sideways SLOWLY
+    The bar fills; the wizard finishes ("registered (april_tag)" in Terminal 3).
+    The robot box should now stand on the real robot. Wrist menu (left palm up) -> LiDAR "full".
+
+B7. Checks (Terminal 4)
+      ros2 run tf2_ros tf2_echo robot_center spectacles            # robot -> glasses, live
+      ros2 topic echo /ar_glasses/status
+      ros2 run g1_ar_bridge publish_demo_pois                      # labelled marker + box in front of the robot
+    Any node can show things in the glasses: visualization_msgs/MarkerArray on /ar_glasses/markers (frame map).
+
+B8. End the session (AGENTS.md section 19)
+      inside the container:  bash /ws/scripts/stop_ros.sh     then exit the terminals
+      on the host:           scripts/stop_humble.sh
+      on the Orin:           Ctrl-C in the OAK-D / RealSense launch
+    Never kill -9 a ros2 launch.
+
+
+TROUBLESHOOTING
+---------------
+- Registration never finishes (the glasses hide their text above 80 %): read Terminal 3. During an
+  AprilTag registration the bridge prints a line like
+    tag: frames 14 received / 9 processed, last: ok; views 6/9 used, rms 1.2 px, sideways 0.18 m, ...;
+         anchor yes, tilt 1.3 deg; progress 84%; waiting for: sideways movement 0.18 m < 0.3 m ...
+  "waiting for:" names the blocker:
+    consistent views N/6       -> views disagree: step closer, move slower, more light
+    multi-view fit X px        -> glasses tracking/timing: stand still ~1 s at each step; it
+                                  usually improves after 20-30 s (limit max_rms_px, 6 px)
+    sideways movement ...      -> step further sideways (0.3 m), or collect 12 good views
+    robot anchor: no TF ...    -> the bridge does not see map -> ar_tag_0: check tag_anchor (B5)
+    'up' disagrees ...         -> wrong robot camera TF (see tag_anchor's tag_up_vs_map_up_deg)
+  Failures and "registration stopped by the glasses" (Skip/Back) are printed too. The same data is
+  in `ros2 topic echo /ar_glasses/status` (tag_diagnosis). Do not press Skip: it leaves the glasses
+  unregistered (no `spectacles` TF).
+  Every attempt is recorded in bags/ar_registration/<time>/ (glasses frames + robot anchor).
+  Replay it later, anywhere, with the bridge's own code:
+    python3 -m g1_ar_bridge.replay_registration bags/ar_registration --overlays /tmp/ov
+  Keep that folder and send it: it shows exactly why the registration did not finish.
+- Lens "Bridge not connected": laptop Wi-Fi and glasses on the SAME hotspot? Right IP (10.42.0.x,
+  not 192.168.123.x)? Terminal 3 running? From the laptop: `nc -zv <wifi ip> 8787` must succeed.
+- "Waiting for the robot camera to see tag 0": do B5 (anchor missing).
+- "Robot and glasses disagree on 'up'": wrong camera TF (OAK-D mount / RealSense frame); check RViz.
+- Registration slow ("seen N/6" for long): move slower, closer (1-1.5 m), more light.
+- Robot box offset: wrong tag_black_size_m, or the tag moved after anchoring -> redo B5 and B6.
+- New RTAB-Map session (restarted mapping): redo B5 (the map frame changed), then B6.

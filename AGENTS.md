@@ -260,6 +260,8 @@ The robot only publishes raw sensor streams. Everything else comes from nodes **
 | `/battery_state` | `g1_sensors` `bms_to_battery_state` (from `/lf/bmsstate`, SOC 0–100 → 0.0–1.0), started by `tf_chain.launch.py` |
 | `/cmd_vel` → legs | Nav2 → `g1_loco_cmdvel` (`cmd_vel_gateway` → `g1_loco_client` → Loco `SetVelocity`; disabled by default, §13), or `rl_hnav` under §25 |
 | frontier goals | `explore_lite` (m-explore) |
+| `map -> ar_tag_<id>` (wall AprilTag) | `g1_ar_bridge` `tag_anchor` (robot camera, robot standing still; §27) |
+| `map -> ar_world`, `ar_world -> spectacles`, `/ar_glasses/*` | `g1_ar_bridge` `ar_bridge` (§27) |
 
 When `rl_hnav`'s real-robot bridge (`humanoid_nav_bridge real_robot_bridge.launch.py`, §14) runs together with `g1_mapping`, **disable** its `odom_tf_bridge` (`/odom` + `odom -> robot_center`) and its static `robot_center -> lidar` transform (launch args `publish_odom_tf:=false publish_lidar_tf:=false override_scan_stamp:=false`). Keep its `/scan` pipeline. Nav2 on the robot runs only from `g1_nav2 rtabmap_nav_dry_run.launch.py` / `rtabmap_nav_live.launch.py` (§15); the SLAM Toolbox real-robot launch was removed on 2026-09-26. Two publishers of the same transform make TF jump; `/dog_odom` is also ~2× short (§8).
 
@@ -308,7 +310,7 @@ The head RealSense points at the floor, so a **chest-mounted OAK-D** is the sema
 - Publish RGB + depth **aligned to RGB at the same resolution** + CameraInfo, like the RealSense profile.
 - If the OAK-D is plugged into the laptop rather than the Orin, its stamps come from a different clock than the robot's streams (§7 Clock).
 - Mounting follows §25.2: ≤ 1 kg of extra hardware in total, on the torso or head, velcro / zip ties / manufacturer holes, no traces on removal, and it must not cover the LiDAR, cameras, vents, or indicators.
-- Its extrinsic is a **measured** static transform `torso_link -> <oak frame>`, checked in RViz (§10.1). No calibration.
+- Its extrinsic is the static transform `camera_link -> oak-d-base-frame` in `g1_sensors` (§10.1): **provisional, taped mount**: joint ICP of the OAK depth against the MID-360 on two stationary room views (`g1_sensors/config/oakd_livox_taped_20260927.yaml`, 2026-09-27; median depth-ray residual ~3 cm on the fitted scenes, **no independent holdout**). Recheck it whenever the tape shifts. Earlier fits are archived (`oakd_livox_provisional.yaml` for the previous mount, `oakd_realsense_provisional.yaml` / `OAKD_REALSENSE_TF.md` for the ChArUco fit). Expect centimetre-level POI error. Expected topics `/oak/rgb/image_raw`, `/oak/rgb/camera_info`, `/oak/stereo/image_raw` (RGB-aligned depth); the Foxy driver on the Orin segfaulted at launch on 2026-09-26 (blocker in `OAKD_REALSENSE_TF.md`).
 - RGB keyframes for POI queries are captured **while the robot is standing still** (settled); walking shakes the chest camera too.
 
 ## RealSense (head)
@@ -493,7 +495,7 @@ robot_center
 pelvis → waist joints → torso_link
   ├── mid360_link → livox_frame
   ├── d435_link   → camera_link → camera_color_optical_frame
-  └── <OAK-D mount> → OAK-D driver frames          (measured, static)
+  │                  └── camera_link → oak-d-base-frame → OAK-D driver frames   (provisional, static)
 ```
 
 **Extrinsics come from the G1 URDF** (`unitree_ros/robots/g1_description`: `d435_joint`, `mid360_joint` on `torso_link`), published on `/tf` by `robot_state_publisher` from `joint_states`. The waist joints move the head relative to the pelvis, so joint states are required.
@@ -519,7 +521,7 @@ Frame-convention glue that is not in the URDF must be an explicit, documented st
 - `d435_link -> camera_link`: identity, the realsense-ros root frame; unverified until the RealSense runs
 - `robot_center -> pelvis`: identity. Pelvis height 0.77 m (LiDAR) / 0.79 m (URDF feet) vs `/dog_odom` z 0.74 m
 - `imu_in_pelvis -> dog_imu_link`: identity. The pelvis IMU's gravity is ~1.5° off the torso-side sensors through the waist joints, constant over three waist poses (standing and hanging): a fixed offset (waist encoder zero or IMU mounting; unresolved). With `/dog_imu_raw` as the gravity reference the map tilts by that much; `g1_mapping imu_source:=livox` avoids it
-- `torso_link -> <OAK-D mount>`: measured by hand at mounting time; write the numbers down
+- `camera_link -> oak-d-base-frame`: taped-mount provisional OAK-depth/MID-360 ICP fit (`oakd_livox_taped_20260927.yaml`); refit when the mount shifts, replacing only this link
 
 Never pass XYZ coordinates without a `frame_id`.
 
@@ -962,6 +964,8 @@ Preferred project split:
 g1_sensors
 g1_recorder
 g1_mapping / rtabmap_bringup
+ar_glasses            # Snap Spectacles guide, Lens text patch, protocol mock bridge (§27)
+g1_ar_bridge          # Spectacles bridge: wall-tag alignment, robot / LiDAR / POIs to the glasses (§27)
 g1_loco_cmdvel        # /cmd_vel -> high-level Loco SetVelocity, safety-gated (§13)
 scene_server
 semantic_query
@@ -1334,7 +1338,7 @@ Consequences:
 ### Day-1 task assignment (updated critical path A→B→C→D; semantic work in parallel)
 | Owner | Package(s) | Milestone | Offline-capable |
 |-------|-----------|-----------|-----------------|
-| A | `g1_sensors`: `/lowstate` → `/joint_states` bridge, `robot_state_publisher` (G1 URDF), static glue frames incl. the OAK-D mount (built; OAK-D mount still to add) | M0 | yes from `/lf/lowstate` bags |
+| A | `g1_sensors`: `/lowstate` → `/joint_states` bridge, `robot_state_publisher` (G1 URDF), static glue frames incl. the OAK-D mount (built; OAK-D mount provisional, taped mount, OAK/LiDAR ICP: `oakd_livox_taped_20260927.yaml`) | M0 | yes from `/lf/lowstate` bags |
 | B | `g1_recorder` + existing `keyframe_manager` | M0 | yes after canonical bag |
 | C | `g1_mapping` (RTAB-Map LiDAR-inertial) bringup + tuning | M1→M3 | yes (from bag) |
 | D | URDF TF chain + physical-measurement validation + `scene_server` canonical outputs | M2→M3 | yes (from bag/map DB) |
@@ -1469,3 +1473,95 @@ Agents must never "fix and retry" after an incident, and must not delete or rota
 - M5 (autonomous survey): gated by 25.1 / 25.3. Decide early whether to use high-level Loco client (fewer requirements) or `rl_hnav` (harness trial + supervisor first). Budget time for the harness trial and supervisor dry-run.
 - Mounting extra sensors: <= 1 kg, non-destructive, no occluding of existing sensors.
 - Recording (M0): `rosbag2` and supervisor logs run on the dev machine or a non-critical thread; do not add load to the command path.
+
+---
+
+# 27. AR Glasses (Snap Spectacles 2024)
+
+Decided 2026-09-26 (team request): a person wearing **Snap Spectacles (2024)** sees what the G1
+knows, in place in the room: the robot, its path, the LiDAR map, and semantic POIs / 3D boxes
+(M4 output). Session setup and one-command launcher: `ar_glasses/SETUP.md`,
+`scripts/start_ar_glasses.sh` (refuses a second TF/map owner; `--bridge-only` next to the
+navigation laptop). Guides: `ar_glasses/README.md` (glasses, Windows / Ubuntu) and
+`g1_ws/src/g1_ar_bridge/README.md` (bridge); hand-out for the robot laptop:
+`ar_glasses/UBUNTU_BRIDGE_SETUP.txt`.
+
+**Base:** the MIT-licensed Lens of [spectacles-dimensional-os](https://github.com/V4C38/spectacles-dimensional-os),
+pinned at commit `ebf1d38`, Lens Studio **5.15.4** (the last Lens Studio line for Spectacles 2024).
+Its Lens connects over Wi-Fi to a bridge: `ws://<laptop IP>:8787` (port fixed in the Lens),
+protocol **v19** (the Lens rejects any other version), JSON lines + binary LiDAR / camera frames.
+The upstream clone lives in the git-ignored `ar_glasses/upstream/` (its Lens packages are Git LFS).
+**We use the Lens unchanged** (an optional text-only patch is in `ar_glasses/lens_patches/`); our
+side is the bridge, `g1_ar_bridge`, on the robot laptop. The upstream Dimensional OS robot stack
+is not used.
+
+```text
+Lens Studio (Windows/macOS only) ──USB-C, once──► Spectacles Drafts (persists across laptop / OS)
+Spectacles ──Wi-Fi──► g1_ar_bridge ar_bridge (robot laptop, ROS 2) ◄── TF, /cloud_map, /plan, markers
+                      ▲ map -> ar_tag_0 ◄── g1_ar_bridge tag_anchor ◄── robot camera sees the wall tag
+           (no robot: g1_ar_bridge.sim_main with a simulated G1, or ar_glasses/mock_bridge)
+```
+
+- **Localization (decided 2026-09-26): one AprilTag on a wall, seen by both cameras.** AprilTag
+  36h11 **ID 0**, printed flat with its white paper margin, black square measured with a ruler
+  (`tag_black_size_m`). `tag_anchor` measures it with a robot camera while the robot **stands
+  still** 1-2 m in front of it: multi-frame PnP + TF `map <- camera` + a depth plane fit when
+  aligned depth exists -> static TF `map -> ar_tag_0`. The glasses measure the same tag through
+  the Lens's **AprilTag registration** (camera JPEGs + the glasses' pose in their own world;
+  multi-view refinement while the person steps sideways) -> `T_ar_tag`. The bridge commits
+  `T_ar_map = T_ar_tag · T_map_tag⁻¹`, levelled to yaw + translation (both worlds are
+  gravity-aligned); it refuses when the two "up" directions disagree by > 10° (a wrong camera
+  TF). The two measurements need not be simultaneous (the tag is static and the anchor lives in
+  `map`); if the glasses finish first the bridge waits for the anchor. Valid for one RTAB-Map map:
+  re-anchor after a new mapping session (a few seconds of standing in front of the tag).
+  Nothing is mounted on the robot. Robot camera: the head RealSense (URDF extrinsic; it looks
+  48° down, so the tag goes low on the wall or on the floor) or the chest OAK-D
+  (`ar_bridge.launch.py camera:=oak`: `/oak/*` topics + the provisional `camera_link ->
+  oak-d-base-frame` mount in `g1_sensors`, §7; its driver still has to start on the Orin). Image
+  `frame_id` = the optical frame.
+  Manual Placement (marker dragged onto the robot + the robot's `map` pose) stays as a fallback.
+- **Frames** (ownership in §6): `map -> ar_tag_<id>` (static, `tag_anchor`), `map -> ar_world`
+  (static, published at each registration), `ar_world -> spectacles` (~2 Hz from the Lens's
+  `get_user_hmd_transform`; x forward / y left / z up), `/ar_glasses/hmd_pose` (PoseStamped in
+  `map`). The AR world is metres, Y up, marker +X forward, quaternions `[x, y, z, w]`
+  (`R_ALIGN`: ROS (x, y, z) -> AR (x, z, -y)). The registration is cleared when the last Lens
+  disconnects (a new Lens session has a new AR world).
+- **Showing POIs:** any node publishes `visualization_msgs/MarkerArray` on `/ar_glasses/markers`
+  in `map` (TEXT / SPHERE -> labelled marker, CUBE -> 3D box edges + `text`, LINE_STRIP /
+  LINE_LIST, DELETE / DELETEALL); the bridge draws them with the Lens's `draw_world_annotation`
+  skill (no Lens change). `ros2 run g1_ar_bridge publish_demo_pois` for a check.
+  `semantic_query` (M4) should publish its POIs there. Voice / typed commands from the glasses
+  are republished on `/ar_glasses/user_command` (String).
+- **Safety:** the glasses are a viewer. The bridge's handshake disables the Lens's navigation
+  marker and e-stop button, and it refuses `nav_goal`, `joystick_command` and `emergency_stop`
+  (the only e-stop is the robot remote). Enabling goals from the glasses would be M5 actuation
+  under §19 / §25. Never run the upstream Dimensional OS stack against the real G1 next to ours:
+  it is a second robot stack with its own map and it can walk the robot (§6).
+- **Network / clock:** glasses and laptop on the same Wi-Fi (event Wi-Fi often isolates clients:
+  use a phone hotspot or a router); the laptop keeps Ethernet to the robot; the container runs
+  with `--net=host` (`scripts/run_humble.sh`), so port 8787 is on the laptop's Wi-Fi. The laptop
+  must be NTP-synced to `.161` (§7 Clock) for the `spectacles` TF stamps; `tag_anchor` itself
+  only uses views while the camera's `map` pose is steady, so it does not depend on the camera
+  clock.
+- **OpenCV:** works with Ubuntu 22.04's 4.5.4 (old `cv2.aruco` API) up to 5.x. 4.5 drops a
+  tag's black square when its white margin is thin: handled (all candidates, largest square per
+  id); corners are refined on the tag edges, so both versions give the same accuracy.
+
+Status (2026-09-26): the mock bridge (`ar_glasses/mock_bridge`) worked with the real glasses
+(connect, Manual Placement, demo POIs). `g1_ar_bridge` is implemented and tested offline: 32
+unit / protocol tests (rendered tag images, a scripted Lens over a real WebSocket, OpenCV 4.5.4
+and 5.0, websockets 10.4-17.1) and a ROS 2 test that runs `ros2 launch g1_ar_bridge
+ar_bridge.launch.py` with a fake robot camera (rendered tag + depth + TF) and a scripted Lens
+(anchor with depth, registration, `map -> ar_world`, `spectacles`, user commands). Simulated
+accuracy (17 cm tag, ideal cameras): yaw ≤ 0.4°, points ≤ ~1 cm. `sim_main` registered with
+the real glasses and a printed tag at home. **First robot run (2026-09-26, chest OAK-D): the
+robot anchor worked (`map -> ar_tag_0`, 1–2 px, stable to ~1 cm), but the glasses never
+committed** (the Lens hides its text above 80 % progress; the bridge logged nothing; Skip left
+the glasses unregistered). Since then the bridge logs what the registration waits for, records
+every attempt (`record_dir`, `bags/ar_registration/`) for `replay_registration`, and
+`ar_bridge.launch.py fake_robot:=true` tests the ROS path at home. Home test with the real
+glasses (`fake_robot:=true`, 2026-09-26): tag views all consistent (1–1.5 cm), but the
+multi-view fit of the real Spectacles poses is 3–7 px (17 px in the first seconds), so the old
+3 px gate took 106 s; replaying the recording, 6 px commits after 29 s with 0.9° less yaw than
+the final estimate. `max_rms_px` is now 6. This most likely also blocked the robot run. Next: the
+robot again; replay the recording if it does not commit.

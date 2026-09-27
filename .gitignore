@@ -1,3 +1,7 @@
 bags/*
 !bags/.gitkeep
 .vscode/*
+
+# Snap Spectacles upstream Lens project, cloned per ar_glasses/README.md
+ar_glasses/upstream/
+__pycache__/
