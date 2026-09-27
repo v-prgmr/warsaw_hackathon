@@ -1,0 +1,35 @@
+poi_node:
+  ros__parameters:
+    # --- OAK-D topics (depthai-ros defaults; VERIFY on hardware and update) ---
+    rgb_topic: /oak/rgb/image_raw
+    depth_topic: /oak/stereo/image_raw          # aligned-to-RGB depth
+    info_topic: /oak/rgb/camera_info
+    # --- frames ---
+    optical_frame: oak_rgb_camera_optical_frame  # depth/rgb optical frame (from g1_sensors TF)
+    map_frame: map
+    robot_frame: robot_center     # "searching: ..." label above the robot, distance in replies
+    # --- geometry ---
+    depth_scale: 0.001        # depth raw units -> metres (16UC1 mm -> 0.001)
+    max_depth_m: 6.0
+    min_depth_m: 0.2
+    # --- detector ---
+    backend: grounding_dino_sam2   # or "mock"
+    allow_mock: true               # fall back to mock if the model import/load fails
+    device: auto                   # auto (GPU if available) | cuda | cpu
+    box_threshold: 0.35
+    text_threshold: 0.25
+    min_confidence: 0.30
+    use_sam2: true
+    # model weights (cache offline on the GPU host; leave blank to use library defaults)
+    gdino_config: ""
+    gdino_weights: ""            # "" = IDEA-Research/grounding-dino-tiny
+    sam2_config: ""
+    sam2_weights: ""             # "" = facebook/sam2.1-hiera-small (HF transformers)
+    # --- search ---
+    query_topics: [/semantic_query/query, /ar_glasses/user_command]   # typed in the AR glasses too
+    reply_topic: /ar_glasses/reply     # shown in the glasses' assistant panel
+    search_timeout_s: 20.0        # keep looking at new frames this long
+    search_period_s: 0.3          # at most one detection per this interval
+    # --- sync ---
+    sync_slop_s: 0.10
+    sync_queue: 15

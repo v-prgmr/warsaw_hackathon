@@ -262,6 +262,8 @@ The robot only publishes raw sensor streams. Everything else comes from nodes **
 | frontier goals | `explore_lite` (m-explore) |
 | `map -> ar_tag_<id>` (wall AprilTag) | `g1_ar_bridge` `tag_anchor` (robot camera, robot standing still; §27) |
 | `map -> ar_world`, `ar_world -> spectacles`, `/ar_glasses/*` | `g1_ar_bridge` `ar_bridge` (§27) |
+| `/oak/*` in domain 0 (OAK-D images, CameraInfo, its `/tf_static`) | `g1_sensors` `oak_domain_relay` (from the Orin's driver in domain 78; §7) |
+| `/semantic_query/poi`, `/semantic_query/image`, markers `ns: semantic_query` / `semantic_status`, replies on `/ar_glasses/reply` | `semantic_query` `poi_node` (object search, §12; GPU container `g1-semantic`) |
 | `map -> leo_odom -> leo_base` (Leo Rover in the G1 map), `/leo_in_g1/status`, markers `ns: leo` | `g1_ar_bridge` `leo_in_map` (from `leo_relay` on Leo: its tag sightings + odometry; `g1_ws/docs/leo_g1_laptop_integration.md`) |
 
 When `rl_hnav`'s real-robot bridge (`humanoid_nav_bridge real_robot_bridge.launch.py`, §14) runs together with `g1_mapping`, **disable** its `odom_tf_bridge` (`/odom` + `odom -> robot_center`) and its static `robot_center -> lidar` transform (launch args `publish_odom_tf:=false publish_lidar_tf:=false override_scan_stamp:=false`). Keep its `/scan` pipeline. Nav2 on the robot runs only from `g1_nav2 rtabmap_nav_dry_run.launch.py` / `rtabmap_nav_live.launch.py` (§15); the SLAM Toolbox real-robot launch was removed on 2026-09-26. Two publishers of the same transform make TF jump; `/dog_odom` is also ~2× short (§8).
@@ -311,7 +313,7 @@ The head RealSense points at the floor, so a **chest-mounted OAK-D** is the sema
 - Publish RGB + depth **aligned to RGB at the same resolution** + CameraInfo, like the RealSense profile.
 - If the OAK-D is plugged into the laptop rather than the Orin, its stamps come from a different clock than the robot's streams (§7 Clock).
 - Mounting follows §25.2: ≤ 1 kg of extra hardware in total, on the torso or head, velcro / zip ties / manufacturer holes, no traces on removal, and it must not cover the LiDAR, cameras, vents, or indicators.
-- Its extrinsic is the static transform `camera_link -> oak-d-base-frame` in `g1_sensors` (§10.1): **provisional, taped mount**: joint ICP of the OAK depth against the MID-360 on two stationary room views (`g1_sensors/config/oakd_livox_taped_20260927.yaml`, 2026-09-27; median depth-ray residual ~3 cm on the fitted scenes, **no independent holdout**). Recheck it whenever the tape shifts. Earlier fits are archived (`oakd_livox_provisional.yaml` for the previous mount, `oakd_realsense_provisional.yaml` / `OAKD_REALSENSE_TF.md` for the ChArUco fit). Expect centimetre-level POI error. Expected topics `/oak/rgb/image_raw`, `/oak/rgb/camera_info`, `/oak/stereo/image_raw` (RGB-aligned depth); the Foxy driver on the Orin segfaulted at launch on 2026-09-26 (blocker in `OAKD_REALSENSE_TF.md`).
+- Its extrinsic is the static transform `camera_link -> oak-d-base-frame` in `g1_sensors` (§10.1): **provisional, taped mount**: joint ICP of the OAK depth against the MID-360 on two stationary room views (`g1_sensors/config/oakd_livox_taped_20260927.yaml`, 2026-09-27; median depth-ray residual ~3 cm on the fitted scenes, **no independent holdout**). Recheck it whenever the tape shifts. Earlier fits are archived (`oakd_livox_provisional.yaml` for the previous mount, `oakd_realsense_provisional.yaml` / `OAKD_REALSENSE_TF.md` for the ChArUco fit). Expect centimetre-level POI error. Expected topics `/oak/rgb/image_raw`, `/oak/rgb/camera_info`, `/oak/stereo/image_raw` (RGB-aligned depth); the Foxy driver on the Orin **segfaults at launch on the robot's DDS domain 0** (reproduced 2026-09-27; Unitree's bare-DDS traffic, cf. §5). Run it in **domain 78** and copy its topics into domain 0 on the laptop with `ros2 run g1_sensors oak_domain_relay` (serialized, images ≤ 10 Hz; `scripts/start_ar_glasses.sh --orin` does both). If the robot is moved, the driver can stall (topics advertised, no data): restart it.
 - RGB keyframes for POI queries are captured **while the robot is standing still** (settled); walking shakes the chest camera too.
 
 ## RealSense (head)
@@ -1571,3 +1573,7 @@ multi-view fit of the real Spectacles poses is 3–7 px (17 px in the first seco
 3 px gate took 106 s; replaying the recording, 6 px commits after 29 s with 0.9° less yaw than
 the final estimate. `max_rms_px` is now 6. This most likely also blocked the robot run. Next: the
 robot again; replay the recording if it does not commit.
+**Object search (2026-09-27):** typing "red cup" in the glasses searches the chest OAK-D with
+Grounding DINO + SAM2 (`semantic_query`, GPU container `g1-semantic`, `--search`) and marks the
+object with a 3D box + label; replies arrive via `/ar_glasses/reply`. On the robot the OAK-D
+driver runs in DDS domain 78 + `g1_sensors oak_domain_relay` (it segfaults on domain 0, §7).

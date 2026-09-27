@@ -53,6 +53,10 @@ class World:
         """Voice / typed command from the glasses; returns the reply text or None."""
         return None
 
+    def pop_replies(self):
+        """Texts for the glasses' assistant panel since the last call (e.g. search results)."""
+        return []
+
 
 def wall_tag_pose(distance, height_above_floor, floor_z, lateral=0.0):
     """Tag on a wall ``distance`` m in front of the map origin, facing back towards it

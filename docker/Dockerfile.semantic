@@ -1,0 +1,15 @@
+# Perception image for semantic_query (Grounding DINO + SAM2), kept apart from the robot image:
+# heavy inference never runs in a robot-command process (AGENTS.md §25.3).
+#   docker build -t g1-semantic -f docker/Dockerfile.semantic .     (needs the g1-humble image)
+# Runs with the GPU: scripts/start_ar_glasses.sh --search  (docker run --gpus all ...)
+FROM g1-humble
+# PyTorch with CUDA 12.8 (supports RTX 50xx / sm_120); keep numpy 1.x for ROS Humble's cv_bridge.
+RUN pip3 install --no-cache-dir "numpy<2" \
+      torch==2.8.0 torchvision==0.23.0 --index-url https://download.pytorch.org/whl/cu128 \
+      --extra-index-url https://pypi.org/simple
+# Grounding DINO and SAM2 both through Hugging Face transformers (Sam2Model since 4.56).
+# Pillow >= 9.1 (PIL.Image.Resampling): the SAM2 processor fails on Ubuntu 22.04's 9.0.1
+RUN pip3 install --no-cache-dir "numpy<2" "transformers==4.56.2" "accelerate>=0.30" \
+      --upgrade "pillow>=10,<11"
+# model weights are cached in the repo's (git-ignored) bags/ folder, shared across containers
+ENV HF_HOME=/ws/bags/hf_cache

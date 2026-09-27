@@ -33,6 +33,7 @@ ar_bridge:
     path_topic: /plan             # Nav2 global path
     markers_topic: /ar_glasses/markers       # POIs / boxes (visualization_msgs/MarkerArray)
     user_command_topic: /ar_glasses/user_command
+    reply_topic: /ar_glasses/reply            # text shown in the glasses (e.g. search results)
     hmd_pose_topic: /ar_glasses/hmd_pose
     status_topic: /ar_glasses/status
 

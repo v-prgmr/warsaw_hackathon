@@ -9,12 +9,15 @@ TAG_SIZE=0.16
 CAMERA=oak
 BRIDGE_ONLY=false
 ORIN=false
+OAK_DOMAIN=78
+SEARCH=false
 BUILD=false
 DEMO=true
 LEO=false
 LEO_HOST=pi@10.0.0.1
 PRINT_ONLY=false
 CONTAINER=g1-ar
+SEARCH_CONTAINER=g1-search
 ORIN_HOST=unitree@192.168.123.164
 
 usage() {
@@ -30,7 +33,13 @@ robot tag anchor (g1_ar_bridge), and a checks window. Prints the IP to type into
   --nic NAME       wired interface to the G1 (default enp2s0)
   --bridge-only    only the bridge: another laptop already runs TF + map
                    (e.g. scripts/start_g1_navigation.sh). Two TF/map owners make TF jump.
-  --orin           also open a window that SSHes to the Orin and starts the OAK-D driver
+  --orin           also open a window that SSHes to the Orin and starts the OAK-D driver in DDS
+                   domain 78 (it segfaults on the robot's domain 0), plus a relay window that
+                   copies its topics into domain 0 (g1_sensors oak_domain_relay)
+  --oak-domain N   the OAK-D driver's DDS domain (default 78; 0 = directly, no relay)
+  --search         object search: type "red cup" in the glasses -> Grounding DINO + SAM2 on the
+                   chest OAK-D (GPU container g1-semantic, docker/Dockerfile.semantic) -> 3D box in
+                   the glasses. First run downloads the models (~1 GB) into bags/hf_cache
                    (you type the Orin password there)
   --no-demo        do not draw the demo scene (virtual table + green box + red bottle in front
                    of the robot, as in the home test); use it once real POIs are published
@@ -39,7 +48,7 @@ robot tag anchor (g1_ar_bridge), and a checks window. Prints the IP to type into
                    Leo over SSH (type Leo's password there). The laptop Wi-Fi AND the glasses
                    must be on Leo's hotspot. See g1_ws/docs/leo_g1_laptop_integration.md
   --leo-host U@IP  Leo's SSH login (default pi@10.0.0.1)
-  --build          colcon build g1_sensors g1_mapping g1_ar_bridge first
+  --build          colcon build g1_sensors g1_mapping g1_ar_bridge semantic_query first
   --print-only     print the commands, start nothing
 Stop everything with: bash scripts/stop_ar_glasses.sh
 HELP
@@ -52,6 +61,8 @@ while (($#)); do
     --nic) [[ $# -ge 2 ]] || { usage; exit 2; }; NIC=$2; shift 2 ;;
     --bridge-only) BRIDGE_ONLY=true; shift ;;
     --orin) ORIN=true; shift ;;
+    --oak-domain) [[ $# -ge 2 ]] || { usage; exit 2; }; OAK_DOMAIN=$2; shift 2 ;;
+    --search) SEARCH=true; shift ;;
     --build) BUILD=true; shift ;;
     --no-demo) DEMO=false; shift ;;
     --leo) LEO=true; shift ;;
@@ -73,8 +84,18 @@ die() { printf '\033[31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 CMD_TF='ros2 launch g1_sensors tf_chain.launch.py'
 CMD_MAP='ros2 launch g1_mapping mapping.launch.py static_tf:=false'
 CMD_BRIDGE="ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=${TAG_SIZE} camera:=${CAMERA} demo_pois:=${DEMO} leo:=${LEO}"
+CMD_RELAY="ros2 run g1_sensors oak_domain_relay --from-domain ${OAK_DOMAIN} --to-domain 0"
+CMD_SEARCH='ros2 launch semantic_query semantic_query.launch.py'
 CMD_CHECKS='echo "Checks: anchor status below. Ctrl-C, then e.g.:"; echo "  ros2 run tf2_ros tf2_echo robot_center spectacles"; echo "  ros2 run g1_ar_bridge publish_demo_pois"; ros2 topic echo /ar_glasses/anchor_status'
-ORIN_REMOTE='source /opt/ros/foxy/setup.bash; export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp ROS_DOMAIN_ID=0; export CYCLONEDDS_URI="<CycloneDDS><Domain Id=\"any\"><General><NetworkInterfaceAddress>eth0</NetworkInterfaceAddress><AllowMulticast>spdp</AllowMulticast></General></Domain></CycloneDDS>"; ros2 launch depthai_ros_driver camera.launch.py use_rviz:=false'
+[[ $OAK_DOMAIN =~ ^[0-9]+$ ]] || { echo "--oak-domain must be a number" >&2; exit 2; }
+# On the Orin: check the camera is on USB, stop a stuck driver cleanly (SIGINT to the real launch
+# process only; the pattern is anchored so this shell never matches itself), start the driver.
+ORIN_REMOTE='lsusb | grep -qi 03e7 || echo "!! no OAK-D (USB id 03e7) on the Orin: check its cable";
+old=$(pgrep -f "^/usr/bin/python3 .*ros2 launch depthai_ros_driver");
+if [ -n "$old" ]; then echo "stopping the old OAK-D driver ($old)"; kill -INT $old; sleep 5; fi;
+source /opt/ros/foxy/setup.bash; export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp ROS_DOMAIN_ID='"$OAK_DOMAIN"';
+export CYCLONEDDS_URI="<CycloneDDS><Domain Id=\"any\"><General><NetworkInterfaceAddress>eth0</NetworkInterfaceAddress><AllowMulticast>spdp</AllowMulticast></General></Domain></CycloneDDS>";
+echo "starting the OAK-D driver in DDS domain '"$OAK_DOMAIN"'"; ros2 launch depthai_ros_driver camera.launch.py use_rviz:=false'
 # quoted twice: once for the local shell of the window, once for the Orin's login shell
 CMD_ORIN="ssh -t ${ORIN_HOST} $(printf %q "bash -lc $(printf %q "$ORIN_REMOTE")")"
 
@@ -95,7 +116,9 @@ if $PRINT_ONLY; then
   $ORIN && { say "[AR 0 - Orin OAK-D driver]"; echo "ssh -t $ORIN_HOST   # then on the Orin:"
              echo "$ORIN_REMOTE" | tr ';' '\n' | sed 's/^ *//'; }
   $BRIDGE_ONLY || { say "[AR 1 - robot TF]"; echo "$CMD_TF"; say "[AR 2 - map]"; echo "$CMD_MAP"; }
+  $ORIN && [[ $OAK_DOMAIN != 0 ]] && { say "[AR 0 - OAK relay, domain $OAK_DOMAIN -> 0]"; echo "$CMD_RELAY"; }
   say "[AR 3 - glasses bridge]"; echo "$CMD_BRIDGE"
+  $SEARCH && { say "[AR 7 - object search, container $SEARCH_CONTAINER (image g1-semantic, GPU)]"; echo "$CMD_SEARCH"; }
   $LEO && { say "[AR 5 - Leo relay on $LEO_HOST]"
             echo "ssh -t $LEO_HOST, then: source /opt/ros/jazzy/setup.bash && python3 leo_relay.py --laptop-ip ${LEO_LAPTOP_IP:-<laptop IP on Leo net>}"
             echo "(the launcher sends g1_ws/src/g1_ar_bridge/g1_ar_bridge/leo_relay.py inline)"; }
@@ -108,6 +131,12 @@ command -v docker >/dev/null || die "docker is not installed"
 command -v gnome-terminal >/dev/null || die "gnome-terminal is required (or run the commands by hand: ar_glasses/SETUP.md)"
 docker image inspect g1-humble >/dev/null 2>&1 \
   || die "Docker image g1-humble missing: build it once with internet (SIM=1 scripts/run_humble.sh, then exit)"
+if $SEARCH; then
+  docker image inspect g1-semantic >/dev/null 2>&1 \
+    || die "Docker image g1-semantic missing: build it once with internet:
+    docker build -t g1-semantic -f docker/Dockerfile.semantic ."
+  [[ -r $ROOT/g1_ws/install/semantic_query/share/semantic_query/package.xml ]] || BUILD=true
+fi
 [[ -r $ROOT/g1_ws/install/setup.bash ]] || BUILD=true
 
 say "1. Robot network ($NIC)"
@@ -165,8 +194,8 @@ in_container() { docker exec "$CONTAINER" bash -c "source /ros_entrypoint.sh; $1
 echo "started container $CONTAINER"
 
 if $BUILD; then
-  say "   building g1_sensors g1_mapping g1_ar_bridge"
-  in_container 'cd /ws/g1_ws && colcon build --packages-select g1_sensors g1_mapping g1_ar_bridge' \
+  say "   building g1_sensors g1_mapping g1_ar_bridge semantic_query"
+  in_container 'cd /ws/g1_ws && colcon build --packages-select g1_sensors g1_mapping g1_ar_bridge semantic_query' \
     || { docker stop "$CONTAINER" >/dev/null; die "build failed"; }
 fi
 
@@ -203,19 +232,41 @@ fi
 echo "LiDAR: $(get lidar)   $CAMERA: $(get "$cam_key")   /tf publishers: ${tf_pubs:-?}"
 
 # ---- windows ------------------------------------------------------------------------------------
-open_window() {  # title, command (inside the container unless the title starts with "AR 0")
-  local title=$1 command=$2
+open_window() {  # title, command[, container] (in a container unless the title starts with "AR 0")
+  local title=$1 command=$2 container=${3:-$CONTAINER}
   if [[ $title == "AR 0"* ]]; then
     gnome-terminal --window --title="$title" -- bash -c "$command; echo; echo 'finished'; exec bash -i"
   else
-    gnome-terminal --window --title="$title" -- docker exec -it "$CONTAINER" bash -c \
+    gnome-terminal --window --title="$title" -- docker exec -it "$container" bash -c \
       "source /ros_entrypoint.sh; printf '%s\n\n' \"\$1\"; eval \"\$1\"; echo; echo 'Process finished (no restart). This shell stays open.'; exec bash -i" \
       bash "$command"
   fi
 }
 
+if $SEARCH; then
+  say "5b. Object search container ($SEARCH_CONTAINER, image g1-semantic)"
+  GPU_ARGS=()
+  if docker info 2>/dev/null | grep -q 'Runtimes:.*nvidia' && command -v nvidia-smi >/dev/null \
+      && nvidia-smi >/dev/null 2>&1; then
+    GPU_ARGS=(--gpus all); echo "GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)"
+  else
+    warn "no NVIDIA GPU for Docker: the search runs on the CPU (several seconds per frame)"
+  fi
+  mkdir -p "$ROOT/bags/hf_cache"
+  docker run -d --rm --name "$SEARCH_CONTAINER" --net=host --ipc=host "${GPU_ARGS[@]}" \
+    --user "$(id -u):$(id -g)" \
+    -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
+    -e HOME=/tmp/home -e ROBOT_IFACE="$NIC" -e G1_SIM=0 \
+    -v "$ROOT":/ws g1-semantic sleep infinity >/dev/null
+  echo "started container $SEARCH_CONTAINER"
+fi
+
 say "6. Opening windows"
-if $ORIN; then open_window 'AR 0 - Orin OAK-D driver (type the Orin password)' "$CMD_ORIN"; sleep 1; fi
+if $ORIN; then
+  open_window "AR 0 - Orin OAK-D driver, domain $OAK_DOMAIN (type the Orin password)" "$CMD_ORIN"
+  [[ $OAK_DOMAIN != 0 ]] && open_window "OAK relay, domain $OAK_DOMAIN -> 0" "$CMD_RELAY"
+  sleep 1
+fi
 if ! $BRIDGE_ONLY; then
   open_window 'AR 1 - robot TF' "$CMD_TF"; sleep 3
   open_window 'AR 2 - map (RTAB-Map)' "$CMD_MAP"; sleep 2
@@ -224,6 +275,7 @@ open_window 'AR 3 - glasses bridge + tag anchor' "$CMD_BRIDGE"; sleep 1
 if $LEO && [[ -n $LEO_LAPTOP_IP ]]; then
   open_window "AR 0 - Leo relay on $LEO_HOST (type Leo's password; read-only)" "$(leo_relay_cmd)"
 fi
+$SEARCH && open_window 'AR 7 - object search (Grounding DINO + SAM2)' "$CMD_SEARCH" "$SEARCH_CONTAINER"
 open_window 'AR 4 - checks' "$CMD_CHECKS"
 
 cat <<EOF
@@ -236,7 +288,10 @@ Next:
      "AR 3" prints: registered (april_tag)   (~30 s)
   3. Wrist menu (left palm up) -> LiDAR full. The demo scene (virtual table, green box,
      red bottle) stands in front of where the robot was at start (off: --no-demo).
-  4. With --leo: Leo appears as a blue box once it sees the same wall tag
+  4. With --search: type "red cup" (or "search for a red cup") in the glasses' text box. The
+     robot looks for up to 20 s; found objects get a green 3D box + label. "stop", "clear".
+     The first search after start waits for the models to load (window AR 7).
+  5. With --leo: Leo appears as a blue box once it sees the same wall tag
      (ros2 topic echo /leo_in_g1/status). Its camera mount is not measured yet: provisional.
 Stop everything: bash scripts/stop_ar_glasses.sh
 EOF

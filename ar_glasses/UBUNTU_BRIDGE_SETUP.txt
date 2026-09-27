@@ -79,14 +79,15 @@ B2. Network on the laptop (host terminal, not Docker)
          timedatectl timesync-status                   # Server: 192.168.123.161
 
 B3. Start the robot camera ON THE ORIN (terminal "ORIN")
-    Chest OAK-D (preferred; see OAKD_REALSENSE_TF.md - its Foxy driver segfaulted on 2026-09-26,
-    so check it really publishes):
+    Chest OAK-D, in DDS domain 78 (on the robot's domain 0 the Orin's driver segfaults):
          ssh unitree@192.168.123.164
          source /opt/ros/foxy/setup.bash
          export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-         export ROS_DOMAIN_ID=0
+         export ROS_DOMAIN_ID=78
          export CYCLONEDDS_URI='<CycloneDDS><Domain Id="any"><General><NetworkInterfaceAddress>eth0</NetworkInterfaceAddress><AllowMulticast>spdp</AllowMulticast></General></Domain></CycloneDDS>'
-         ros2 launch depthai_ros_driver camera.launch.py use_rviz:=false
+         ros2 launch depthai_ros_driver camera.launch.py use_rviz:=false     # "Camera ready!"
+    and on the laptop (container terminal) copy its topics into domain 0:
+         ros2 run g1_sensors oak_domain_relay
     If the OAK-D does not come up: use the head RealSense instead (start_realsense.md, on the Orin;
     it stops the vendor video_hub_pc4 service first) and put the tag low / on the floor.
 
