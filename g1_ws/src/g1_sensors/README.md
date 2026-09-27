@@ -62,6 +62,21 @@ ros2 bag play <bag> --clock 200
 
 Topic names, the joint order, and the glue frames live in `config/g1_sensors.yaml`.
 
+## OAK-D driver in domain 78 + relay into domain 0
+
+The OAK-D driver on the Orin (Foxy, CycloneDDS) segfaults at launch on the robot's DDS domain 0
+(reproduced 2026-09-27). Run it in domain 78 (`ROS_DOMAIN_ID=78 ros2 launch depthai_ros_driver
+camera.launch.py`) and copy its topics into domain 0 on the laptop:
+
+```bash
+ros2 run g1_sensors oak_domain_relay                 # 78 -> 0: /oak/rgb|stereo/image_raw + camera_info, /tf_static
+ros2 run g1_sensors oak_domain_relay --max-rate 15   # images per second (default 10, 0 = all)
+```
+
+Messages are copied serialized (no decode); images are decimated by header stamp, so RGB and
+aligned depth stay paired. `scripts/start_ar_glasses.sh --orin` starts both. If the robot is
+moved, the driver can stall (topics advertised, no data): restart it on the Orin.
+
 ## Offline OAK-D depth ↔ MID-360 LiDAR extrinsic check
 
 `register_oak_livox` reads **two finalized MCAP bags directly**; it does not replay data,
