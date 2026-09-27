@@ -11,6 +11,8 @@ BRIDGE_ONLY=false
 ORIN=false
 BUILD=false
 DEMO=true
+LEO=false
+LEO_HOST=pi@10.0.0.1
 PRINT_ONLY=false
 CONTAINER=g1-ar
 ORIN_HOST=unitree@192.168.123.164
@@ -32,6 +34,11 @@ robot tag anchor (g1_ar_bridge), and a checks window. Prints the IP to type into
                    (you type the Orin password there)
   --no-demo        do not draw the demo scene (virtual table + green box + red bottle in front
                    of the robot, as in the home test); use it once real POIs are published
+  --leo            also place the Leo Rover in the G1 map from its sightings of the same wall tag
+                   and mark it in the glasses: opens a window that runs the read-only relay on
+                   Leo over SSH (type Leo's password there). The laptop Wi-Fi AND the glasses
+                   must be on Leo's hotspot. See g1_ws/docs/leo_g1_laptop_integration.md
+  --leo-host U@IP  Leo's SSH login (default pi@10.0.0.1)
   --build          colcon build g1_sensors g1_mapping g1_ar_bridge first
   --print-only     print the commands, start nothing
 Stop everything with: bash scripts/stop_ar_glasses.sh
@@ -47,6 +54,8 @@ while (($#)); do
     --orin) ORIN=true; shift ;;
     --build) BUILD=true; shift ;;
     --no-demo) DEMO=false; shift ;;
+    --leo) LEO=true; shift ;;
+    --leo-host) [[ $# -ge 2 ]] || { usage; exit 2; }; LEO_HOST=$2; shift 2 ;;
     --print-only) PRINT_ONLY=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'Unknown argument: %s\n' "$1" >&2; usage; exit 2 ;;
@@ -63,11 +72,22 @@ die() { printf '\033[31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 # ---- commands run inside the container (one window each) ----------------------------------
 CMD_TF='ros2 launch g1_sensors tf_chain.launch.py'
 CMD_MAP='ros2 launch g1_mapping mapping.launch.py static_tf:=false'
-CMD_BRIDGE="ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=${TAG_SIZE} camera:=${CAMERA} demo_pois:=${DEMO}"
+CMD_BRIDGE="ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=${TAG_SIZE} camera:=${CAMERA} demo_pois:=${DEMO} leo:=${LEO}"
 CMD_CHECKS='echo "Checks: anchor status below. Ctrl-C, then e.g.:"; echo "  ros2 run tf2_ros tf2_echo robot_center spectacles"; echo "  ros2 run g1_ar_bridge publish_demo_pois"; ros2 topic echo /ar_glasses/anchor_status'
 ORIN_REMOTE='source /opt/ros/foxy/setup.bash; export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp ROS_DOMAIN_ID=0; export CYCLONEDDS_URI="<CycloneDDS><Domain Id=\"any\"><General><NetworkInterfaceAddress>eth0</NetworkInterfaceAddress><AllowMulticast>spdp</AllowMulticast></General></Domain></CycloneDDS>"; ros2 launch depthai_ros_driver camera.launch.py use_rviz:=false'
 # quoted twice: once for the local shell of the window, once for the Orin's login shell
 CMD_ORIN="ssh -t ${ORIN_HOST} $(printf %q "bash -lc $(printf %q "$ORIN_REMOTE")")"
+
+# Leo relay: the script is sent inline (no install on Leo), run in a real terminal so Ctrl-C
+# (or closing the window) also stops it on Leo. It only reads Leo's TF and odometry.
+LEO_IP=${LEO_HOST#*@}
+LEO_LAPTOP_IP=$(ip route get "$LEO_IP" 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' | head -1)
+leo_relay_cmd() {
+  local b64 remote
+  b64=$(base64 -w0 "$ROOT/g1_ws/src/g1_ar_bridge/g1_ar_bridge/leo_relay.py")
+  remote="source /opt/ros/jazzy/setup.bash && echo $b64 | base64 -d > /tmp/g1_leo_relay.py && exec python3 /tmp/g1_leo_relay.py --laptop-ip ${LEO_LAPTOP_IP:-<laptop IP on Leo net>}"
+  echo "ssh -t $LEO_HOST $(printf %q "bash -lc $(printf %q "$remote")")"
+}
 
 if $PRINT_ONLY; then
   say "Container (robot mode, DDS on $NIC):"
@@ -76,6 +96,9 @@ if $PRINT_ONLY; then
              echo "$ORIN_REMOTE" | tr ';' '\n' | sed 's/^ *//'; }
   $BRIDGE_ONLY || { say "[AR 1 - robot TF]"; echo "$CMD_TF"; say "[AR 2 - map]"; echo "$CMD_MAP"; }
   say "[AR 3 - glasses bridge]"; echo "$CMD_BRIDGE"
+  $LEO && { say "[AR 5 - Leo relay on $LEO_HOST]"
+            echo "ssh -t $LEO_HOST, then: source /opt/ros/jazzy/setup.bash && python3 leo_relay.py --laptop-ip ${LEO_LAPTOP_IP:-<laptop IP on Leo net>}"
+            echo "(the launcher sends g1_ws/src/g1_ar_bridge/g1_ar_bridge/leo_relay.py inline)"; }
   say "[AR 4 - checks]"; echo "$CMD_CHECKS"
   exit 0
 fi
@@ -117,6 +140,17 @@ else
 fi
 
 # ---- container ----------------------------------------------------------------------------------
+if $LEO; then
+  say "3b. Leo Rover ($LEO_HOST)"
+  if ping -c1 -W2 "$LEO_IP" >/dev/null 2>&1 && [[ -n $LEO_LAPTOP_IP ]]; then
+    echo "OK: Leo answers; this laptop is $LEO_LAPTOP_IP on Leo's network"
+    [[ $LEO_LAPTOP_IP == 10.0.0.* ]] || warn "the laptop reaches Leo from $LEO_LAPTOP_IP: the glasses must be on that same network"
+  else
+    warn "Leo ($LEO_IP) does not answer: connect the laptop Wi-Fi to Leo's hotspot. Leo will not appear."
+    LEO_LAPTOP_IP=
+  fi
+fi
+
 say "4. Container"
 if docker ps -q --filter ancestor=g1-humble | grep -q .; then
   die "a g1-humble container is already running (a second stack would duplicate TF/map).
@@ -187,6 +221,9 @@ if ! $BRIDGE_ONLY; then
   open_window 'AR 2 - map (RTAB-Map)' "$CMD_MAP"; sleep 2
 fi
 open_window 'AR 3 - glasses bridge + tag anchor' "$CMD_BRIDGE"; sleep 1
+if $LEO && [[ -n $LEO_LAPTOP_IP ]]; then
+  open_window "AR 0 - Leo relay on $LEO_HOST (type Leo's password; read-only)" "$(leo_relay_cmd)"
+fi
 open_window 'AR 4 - checks' "$CMD_CHECKS"
 
 cat <<EOF
@@ -199,5 +236,7 @@ Next:
      "AR 3" prints: registered (april_tag)   (~30 s)
   3. Wrist menu (left palm up) -> LiDAR full. The demo scene (virtual table, green box,
      red bottle) stands in front of where the robot was at start (off: --no-demo).
+  4. With --leo: Leo appears as a blue box once it sees the same wall tag
+     (ros2 topic echo /leo_in_g1/status). Its camera mount is not measured yet: provisional.
 Stop everything: bash scripts/stop_ar_glasses.sh
 EOF

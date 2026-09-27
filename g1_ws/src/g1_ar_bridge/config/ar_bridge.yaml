@@ -58,3 +58,22 @@ ar_tag_anchor:
     republish_rot_deg: 0.5
     anchor_file: ""               # e.g. /ws/bags/ar_anchor.yaml to keep the last anchor
     load_saved: false             # only with the SAME RTAB-Map map (localization mode)
+leo_in_map:
+  ros__parameters:
+    udp_port: 8791                # leo_relay (on the Leo Rover) sends here
+    map_frame: map
+    tag_frame: ar_tag_0           # the G1 anchor of the shared wall tag (tag_anchor)
+    robot_frame: robot_center     # only for the floor height of the Leo marker
+    base_height_m: 0.78
+    leo_odom_frame: leo_odom      # OUR names for Leo's frames (integration doc §2)
+    leo_base_frame: leo_base
+    leo_size_m: [0.45, 0.43, 0.25]          # Leo Rover body, for the box in the glasses
+    # Leo's OAK-D in Leo's base frame. NOT MEASURED: forward-looking, upside down, at the origin.
+    # Measure it (tape: x forward, y left, z up from base_link) and set leo_camera_measured.
+    leo_camera_xyz: [0.0, 0.0, 0.0]
+    leo_camera_rpy: [1.5707963267948966, 0.0, 1.5707963267948966]
+    leo_camera_measured: false
+    min_distance_m: 0.2           # accept tag sightings from this far ...
+    max_distance_m: 4.0           # ... up to this far
+    stale_s: 3.0                  # label "(no update)" after this long without relay data
+

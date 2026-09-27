@@ -66,6 +66,13 @@ def _launch_setup(context):
         nodes.append(Node(package="g1_ar_bridge", executable="publish_demo_pois",
                           name="ar_demo_pois", output="screen",
                           parameters=[{"use_sim_time": use_sim_time}]))
+    if arg("leo").lower() in ("true", "1"):
+        # Leo Rover in the G1 map via the shared tag (needs leo_relay running on Leo)
+        leo = {"use_sim_time": use_sim_time}
+        if arg("leo_udp_port"):
+            leo["udp_port"] = int(arg("leo_udp_port"))
+        nodes.append(Node(package="g1_ar_bridge", executable="leo_in_map", name="leo_in_map",
+                          output="screen", parameters=[arg("config"), leo]))
     if arg("fake_robot").lower() in ("true", "1"):
         # no robot: robot_center at the map origin (0.78 m above the floor), the wall tag
         # fake_tag_distance m ahead at fake_tag_height m above the floor, facing the robot
@@ -122,6 +129,11 @@ def generate_launch_description():
         DeclareLaunchArgument("demo_pois", default_value="false",
                               description="also draw the demo scene (virtual table, green box, "
                                           "red bottle) in front of the robot"),
+        DeclareLaunchArgument("leo", default_value="false",
+                              description="also place the Leo Rover in the G1 map from its tag "
+                                          "sightings (leo_relay on Leo -> UDP) and mark it"),
+        DeclareLaunchArgument("leo_udp_port", default_value="",
+                              description="UDP port for leo_relay; '' = config (8791)"),
         DeclareLaunchArgument("fake_robot", default_value="false",
                               description="home test without the robot: fake robot pose + "
                                           "fake wall-tag anchor instead of tag_anchor"),

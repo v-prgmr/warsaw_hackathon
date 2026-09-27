@@ -135,6 +135,15 @@ python3 -m g1_ar_bridge.replay_registration <dir> --overlays /tmp/ov      # anno
 | `/ar_glasses/user_command` | String out | `ar_bridge` | voice / typed commands from the glasses |
 | `/ar_glasses/status`, `/ar_glasses/anchor_status` | String (JSON) | both nodes | registration and anchor state |
 | `/cloud_map`, `/plan` | in | g1_mapping, Nav2 | map cloud (voxelised, ≤ 1500 pts per frame), path |
+| `map -> leo_odom -> leo_base` | TF | `leo_in_map` (`leo:=true`) | the Leo Rover from its sightings of the same wall tag + its odometry |
+| `/leo_in_g1/status` | String (JSON) | `leo_in_map` | relay, sightings, rejections, Leo's pose in `map` |
+| UDP 8791 | in | `leo_relay` on Leo | Leo's tag detection (`leo_oak_rgb_camera_optical_frame -> leo_tag0`) and `/leo/merged_odom`, JSON |
+
+**Leo Rover (`leo:=true`).** `T_map_leo = T_map_tag · inv(T_leocam_tag) · inv(T_leo_cam)`, with
+`T_map_tag` from `tag_anchor` and Leo's detection relayed by `leo_relay` (runs on Leo, read-only,
+see its docstring). Leo is drawn in the glasses (`ns: "leo"`). Leo's camera mount is not
+measured yet (`leo_in_map` parameters in `config/ar_bridge.yaml`). Contract and status:
+`g1_ws/docs/leo_g1_laptop_integration.md`.
 
 **Demo scene:** `ar_bridge.launch.py demo_pois:=true` (on by default in
 `scripts/start_ar_glasses.sh`, off with `--no-demo`) or `ros2 run g1_ar_bridge publish_demo_pois`

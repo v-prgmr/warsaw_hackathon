@@ -136,7 +136,27 @@ Ctrl-C the OAK-D driver on the Orin. Never `kill -9` a `ros2 launch` (AGENTS.md 
 | Robot box offset from the robot | wrong `--tag-size`, the tag moved, or the (taped) OAK-D mount shifted: re-measure the calibration (`g1_sensors` README, OAK-D ↔ LiDAR) |
 | Dimensional OS missing from Drafts | redeploy from Lens Studio ([`README.md`](README.md) Part 1) |
 
-## 4. Useful extras
+## 4. With the Leo Rover too (shared world)
+
+The same wall tag also places the **Leo Rover** in the G1 map, and the glasses mark it as a blue
+box with a heading line and a "Leo Rover" label (details and status:
+[`g1_ws/docs/leo_g1_laptop_integration.md`](../g1_ws/docs/leo_g1_laptop_integration.md)).
+
+```text
+  G1 ──Ethernet── laptop ── Wi-Fi ── Leo's hotspot (10.0.0.1) ── glasses (Wi-Fi)
+```
+1. Laptop Wi-Fi **and** glasses on **Leo's hotspot** (the G1 stays on the cable).
+2. `bash scripts/start_ar_glasses.sh --tag-size 0.16 --orin --leo`: an extra window SSHes to
+   Leo (`pi@10.0.0.1`, type Leo's password) and runs a **read-only relay** there for the session
+   (nothing installed; ask the Leo team first). Leo's AprilTag detector must be running.
+3. Point Leo's front camera at the wall tag (0.2–4 m). The launcher's AR 3 window logs
+   `Leo placed in map: (x, y) m, yaw …`; `ros2 topic echo /leo_in_g1/status` shows sightings,
+   rejections and the pose. Between sightings Leo's odometry carries the pose.
+4. **Provisional:** Leo's camera mount is not measured yet (`leo_camera_xyz` in
+   `config/ar_bridge.yaml`): expect an offset of about the camera's distance from Leo's centre
+   until it is measured.
+
+## 5. Useful extras
 - **Home test without the robot** (real glasses, tag on your wall, fake robot):
   `SIM=1 scripts/run_humble.sh`, then
   `ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=0.16 fake_robot:=true`.
