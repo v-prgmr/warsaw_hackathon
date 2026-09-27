@@ -537,6 +537,13 @@ Then either the whole stack with an explorer window (it waits for Enter):
 bash scripts/start_g1_explore_navigation.sh      # dry run; --live walks the G1
 ```
 
+or add it to an already running `scripts/start_g1_navigation.sh` (plug-in; dry run or live,
+it detects which; `--stop` stops only the explorer, `--here` runs it in the current terminal):
+
+```bash
+bash scripts/start_g1_explore.sh
+```
+
 or the explorer alone next to a running dry-run stack. Parameters:
 `g1_nav2/params/explore_g1_rtabmap.yaml` (`robot_center`, `/map`,
 `min_frontier_size` 0.3 m, `progress_timeout` 60 s, `/explore/frontiers`):
