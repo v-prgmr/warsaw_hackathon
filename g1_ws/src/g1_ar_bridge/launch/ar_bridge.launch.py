@@ -61,6 +61,11 @@ def _launch_setup(context):
         anchor["use_depth"] = arg("use_depth").lower() in ("true", "1")
     nodes = [Node(package="g1_ar_bridge", executable="ar_bridge", name="ar_bridge",
                   output="screen", parameters=[arg("config"), bridge])]
+    if arg("demo_pois").lower() in ("true", "1"):
+        # the home test's demo scene (table, green box, red bottle) in front of the robot
+        nodes.append(Node(package="g1_ar_bridge", executable="publish_demo_pois",
+                          name="ar_demo_pois", output="screen",
+                          parameters=[{"use_sim_time": use_sim_time}]))
     if arg("fake_robot").lower() in ("true", "1"):
         # no robot: robot_center at the map origin (0.78 m above the floor), the wall tag
         # fake_tag_distance m ahead at fake_tag_height m above the floor, facing the robot
@@ -114,6 +119,9 @@ def generate_launch_description():
         DeclareLaunchArgument("record_dir", default_value="",
                               description="where glasses registrations are recorded; '' = "
                                           "config (/ws/bags/ar_registration)"),
+        DeclareLaunchArgument("demo_pois", default_value="false",
+                              description="also draw the demo scene (virtual table, green box, "
+                                          "red bottle) in front of the robot"),
         DeclareLaunchArgument("fake_robot", default_value="false",
                               description="home test without the robot: fake robot pose + "
                                           "fake wall-tag anchor instead of tag_anchor"),

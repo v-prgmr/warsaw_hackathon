@@ -10,6 +10,7 @@ CAMERA=oak
 BRIDGE_ONLY=false
 ORIN=false
 BUILD=false
+DEMO=true
 PRINT_ONLY=false
 CONTAINER=g1-ar
 ORIN_HOST=unitree@192.168.123.164
@@ -29,6 +30,8 @@ robot tag anchor (g1_ar_bridge), and a checks window. Prints the IP to type into
                    (e.g. scripts/start_g1_navigation.sh). Two TF/map owners make TF jump.
   --orin           also open a window that SSHes to the Orin and starts the OAK-D driver
                    (you type the Orin password there)
+  --no-demo        do not draw the demo scene (virtual table + green box + red bottle in front
+                   of the robot, as in the home test); use it once real POIs are published
   --build          colcon build g1_sensors g1_mapping g1_ar_bridge first
   --print-only     print the commands, start nothing
 Stop everything with: bash scripts/stop_ar_glasses.sh
@@ -43,6 +46,7 @@ while (($#)); do
     --bridge-only) BRIDGE_ONLY=true; shift ;;
     --orin) ORIN=true; shift ;;
     --build) BUILD=true; shift ;;
+    --no-demo) DEMO=false; shift ;;
     --print-only) PRINT_ONLY=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'Unknown argument: %s\n' "$1" >&2; usage; exit 2 ;;
@@ -59,7 +63,7 @@ die() { printf '\033[31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 # ---- commands run inside the container (one window each) ----------------------------------
 CMD_TF='ros2 launch g1_sensors tf_chain.launch.py'
 CMD_MAP='ros2 launch g1_mapping mapping.launch.py static_tf:=false'
-CMD_BRIDGE="ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=${TAG_SIZE} camera:=${CAMERA}"
+CMD_BRIDGE="ros2 launch g1_ar_bridge ar_bridge.launch.py tag_black_size_m:=${TAG_SIZE} camera:=${CAMERA} demo_pois:=${DEMO}"
 CMD_CHECKS='echo "Checks: anchor status below. Ctrl-C, then e.g.:"; echo "  ros2 run tf2_ros tf2_echo robot_center spectacles"; echo "  ros2 run g1_ar_bridge publish_demo_pois"; ros2 topic echo /ar_glasses/anchor_status'
 ORIN_REMOTE='source /opt/ros/foxy/setup.bash; export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp ROS_DOMAIN_ID=0; export CYCLONEDDS_URI="<CycloneDDS><Domain Id=\"any\"><General><NetworkInterfaceAddress>eth0</NetworkInterfaceAddress><AllowMulticast>spdp</AllowMulticast></General></Domain></CycloneDDS>"; ros2 launch depthai_ros_driver camera.launch.py use_rviz:=false'
 # quoted twice: once for the local shell of the window, once for the Orin's login shell
@@ -193,6 +197,7 @@ Next:
   2. Glasses: Drafts -> Dimensional OS -> Start Robot & Bridge: Next -> Connect: the IP above
      -> Registration: AprilTag. Step sideways slowly, pause ~1 s per step, do NOT press Skip.
      "AR 3" prints: registered (april_tag)   (~30 s)
-  3. Wrist menu (left palm up) -> LiDAR full.
+  3. Wrist menu (left palm up) -> LiDAR full. The demo scene (virtual table, green box,
+     red bottle) stands in front of where the robot was at start (off: --no-demo).
 Stop everything: bash scripts/stop_ar_glasses.sh
 EOF

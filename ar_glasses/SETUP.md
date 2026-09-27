@@ -63,10 +63,10 @@ starts a Docker container and opens one window each for:
 | AR 0 (with `--orin`) | SSH to the Orin, starts the OAK-D driver; **type the Orin password** there |
 | AR 1 | robot TF (`g1_sensors tf_chain`: URDF, joints, OAK-D mount calibration) |
 | AR 2 | map (`g1_mapping`, RTAB-Map) |
-| AR 3 | the glasses bridge + the robot's tag measurement (`g1_ar_bridge`) |
+| AR 3 | the glasses bridge + the robot's tag measurement (`g1_ar_bridge`) + the demo scene |
 | AR 4 | checks (`/ar_glasses/anchor_status`) |
 
-Options: `--camera realsense`, `--nic <iface>`, `--build` (rebuild first), `--print-only` (show
+Options: `--no-demo` (no virtual table / green box), `--camera realsense`, `--nic <iface>`, `--build` (rebuild first), `--print-only` (show
 the commands only), and **`--bridge-only`** when another laptop already runs TF + map (e.g.
 `scripts/start_g1_navigation.sh`): the script refuses to start a second TF/map owner, which
 would make TF jump (AGENTS.md §6). Stop with `bash scripts/stop_ar_glasses.sh`.
@@ -81,10 +81,13 @@ would make TF jump (AGENTS.md §6). Stop with `bash scripts/stop_ar_glasses.sh`.
    at each**. **Do not press Skip.** After about 30 s, AR 3: `registered (april_tag)`; the
    robot box stands on the real G1.
 3. **Look.** Wrist menu (left palm up) → LiDAR **full**: the map points on walls and furniture.
+   The **demo scene** from the home test (a virtual table, a green box on it, a "red bottle"
+   label) stands to the front right of where the robot was at start; it is virtual, and
+   `--no-demo` turns it off.
    In AR 4 (Ctrl-C the echo first):
    ```bash
    ros2 run tf2_ros tf2_echo robot_center spectacles     # the glasses' position from the robot
-   ros2 run g1_ar_bridge publish_demo_pois               # a labelled marker and a box
+   ros2 run g1_ar_bridge publish_demo_pois               # the demo scene (already on with the script)
    ```
    Any node can draw in the glasses: `visualization_msgs/MarkerArray` on `/ar_glasses/markers`
    (frame `map`).

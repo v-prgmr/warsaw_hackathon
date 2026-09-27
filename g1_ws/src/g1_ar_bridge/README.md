@@ -136,8 +136,12 @@ python3 -m g1_ar_bridge.replay_registration <dir> --overlays /tmp/ov      # anno
 | `/ar_glasses/status`, `/ar_glasses/anchor_status` | String (JSON) | both nodes | registration and anchor state |
 | `/cloud_map`, `/plan` | in | g1_mapping, Nav2 | map cloud (voxelised, ≤ 1500 pts per frame), path |
 
-`ros2 run g1_ar_bridge publish_demo_pois` publishes a labelled marker and a box in front of the
-robot, to check the glasses before `semantic_query` exists.
+**Demo scene:** `ar_bridge.launch.py demo_pois:=true` (on by default in
+`scripts/start_ar_glasses.sh`, off with `--no-demo`) or `ros2 run g1_ar_bridge publish_demo_pois`
+draws the same template as the home test (`sim_main`) in front of where the robot stands at
+start: a virtual table top (0.75 m), a green 3D box on it ("box on the table") and a "red
+bottle" label. It is virtual, to check the glasses before `semantic_query` exists; real POIs
+should use their own marker `ns`.
 
 Parameters: `config/ar_bridge.yaml` (documented inline). Launch arguments override the tag, the
 camera topics and the port.
